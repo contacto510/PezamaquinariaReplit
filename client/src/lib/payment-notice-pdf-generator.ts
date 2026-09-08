@@ -5,6 +5,12 @@ import { formatCurrency, savePDFMobile } from "./utils";
 import { addSocialIconsToPDF } from "./pdf-social-icons";
 import { addPezaLogo } from "./logo-base64";
 import { authenticatedFetch } from "./queryClient";
+import {
+  getRepairAccountAmounts,
+  getReportAccountAmounts,
+  isBillableRepair,
+  isRepairReport,
+} from "@shared/account-statement";
 
 // Colores corporativos Péza Maquinaria
 const PEZA_YELLOW: [number, number, number] = [255, 193, 7];
@@ -28,17 +34,8 @@ interface ProcessedReport {
  * lógica que el Estado de Cuenta completo (sincronización con estado manual).
  */
 function processReport(report: any): ProcessedReport {
-  const importe = parseFloat(report.total || "0");
-
-  let abono = 0;
-  if (report.paymentStatus === "pagado") {
-    // Marcado manualmente como pagado = 100% abonado
-    abono = importe;
-  } else {
-    abono = report.paymentSummary ? parseFloat(report.paymentSummary.totalPaid) || 0 : 0;
-  }
-
-  const saldo = Math.max(0, importe - abono);
+  const { total: importe, paid: abono, pending: saldo } =
+    getReportAccountAmounts(report);
 
   // Período de Renta: misma lógica que el PDF individual del reporte.
   // 1) rango de fechas del reporte; 2) campo periodoRenta del primer concepto; 3) "Por definir"
@@ -88,9 +85,8 @@ function processReport(report: any): ProcessedReport {
  * "Pagada" = liquidada al 100%, cualquier otro estado = saldo completo.
  */
 function processRepair(repair: any): ProcessedReport {
-  const importe = parseFloat(repair.total || "0");
-  const abono = repair.paymentStatus === "Pagada" ? importe : 0;
-  const saldo = Math.max(0, importe - abono);
+  const { total: importe, paid: abono, pending: saldo } =
+    getRepairAccountAmounts(repair);
 
   // Se formatea en UTC porque la fecha se guarda como fecha "de negocio"
   // (medianoche UTC); convertir a hora local de México la recorrería un día.
@@ -188,26 +184,9 @@ export async function generatePaymentNoticePDF(
     // Solo reparaciones confirmadas: se excluyen las "No autorizado", las que
     // siguen en cotización (paymentStatus "Cotización") y las que aún están en
     // "Espera de confirmación" o "Diagnóstico" (trabajo no confirmado).
-    const EXCLUDED_REPAIR_STATUSES = [
-      "No autorizado",
-      "Espera de confirmación",
-      "Diagnóstico",
-    ];
-    const billableRepairs = repairs.filter(
-      (r) =>
-        !EXCLUDED_REPAIR_STATUSES.includes(r.status) &&
-        r.paymentStatus !== "Cotización" &&
-        parseFloat(r.total || "0") > 0.005
-    );
+    const billableRepairs = repairs.filter(isBillableRepair);
     // Excluir reportes de renta capturados como "REPARACION": esas reparaciones
     // ya vienen del panel de Reparaciones (folios R-XX) y se duplicarían.
-    const isRepairReport = (rep: any) =>
-      (rep.nombreObra || "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim()
-        .toUpperCase()
-        .startsWith("REPARACION");
     const rentalReports = reports.filter((rep) => !isRepairReport(rep));
     const processed = [
       ...rentalReports.map(processReport),

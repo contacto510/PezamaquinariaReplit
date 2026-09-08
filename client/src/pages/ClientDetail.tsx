@@ -149,7 +149,14 @@ export default function ClientDetail() {
   const [customDateTo, setCustomDateTo] = useState<Date | undefined>();
 
   // Especificamos el tipo Client para evitar errores de tipado
-  const { data: client, isLoading, isError } = useQuery<Client & { reports?: any[], totalReports?: number, totalReportAmount?: string }>({
+  const { data: client, isLoading, isError } = useQuery<Client & {
+    reports?: any[];
+    totalReports?: number;
+    totalReportAmount?: string;
+    accountTotalEntries?: number;
+    accountTotalAmount?: string;
+    accountTotalPendingAmount?: string;
+  }>({
     queryKey: ['/api/clients', id],
     queryFn: getQueryFn({
       on401: "throw",
@@ -174,13 +181,26 @@ export default function ClientDetail() {
 
   // Memoización de totales calculados
   const accountStats = useMemo(() => {
-    const totalAmount = parseFloat(client?.totalReportAmount || "0");
-    const totalReports = client?.totalReports || 0;
-    const averagePerReport = totalReports > 0 ? totalAmount / totalReports : 0;
-    const pendingAmount = parseFloat((client as any)?.totalPendingAmount || "0");
+    const totalAmount = parseFloat(
+      client?.accountTotalAmount || client?.totalReportAmount || "0",
+    );
+    const totalEntries = client?.accountTotalEntries ?? client?.totalReports ?? 0;
+    const averagePerEntry = totalEntries > 0 ? totalAmount / totalEntries : 0;
+    const pendingAmount = parseFloat(
+      client?.accountTotalPendingAmount ||
+      (client as any)?.totalPendingAmount ||
+      "0",
+    );
     
-    return { totalAmount, totalReports, averagePerReport, pendingAmount };
-  }, [client?.totalReportAmount, client?.totalReports, (client as any)?.totalPendingAmount]);
+    return { totalAmount, totalEntries, averagePerEntry, pendingAmount };
+  }, [
+    client?.accountTotalAmount,
+    client?.accountTotalEntries,
+    client?.accountTotalPendingAmount,
+    client?.totalReportAmount,
+    client?.totalReports,
+    (client as any)?.totalPendingAmount,
+  ]);
 
   const collectibleReports = useMemo(() => {
     const statuses = new Set(["pendiente", "facturado", "vencido"]);
@@ -1888,7 +1908,7 @@ export default function ClientDetail() {
                       Estado de Cuenta del Cliente
                     </h3>
                     <p className="text-gray-600 text-sm mt-1">
-                      Resumen completo de reportes facturados y montos pendientes
+                      Resumen completo de reportes y reparaciones facturables
                     </p>
                   </div>
                   
@@ -2072,9 +2092,9 @@ export default function ClientDetail() {
                           <Calculator className="w-4 h-4 sm:w-5 sm:h-5 text-black" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Reportes Totales</p>
+                          <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Movimientos Totales</p>
                           <p className="text-lg sm:text-2xl font-bold text-yellow-700 truncate">
-                            {accountStats.totalReports}
+                            {accountStats.totalEntries}
                           </p>
                         </div>
                       </div>
@@ -2088,9 +2108,9 @@ export default function ClientDetail() {
                           <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Promedio por Reporte</p>
+                          <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Promedio por Movimiento</p>
                           <p className="text-lg sm:text-2xl font-bold text-blue-700 truncate">
-                            {formatCurrency(accountStats.averagePerReport)}
+                            {formatCurrency(accountStats.averagePerEntry)}
                           </p>
                         </div>
                       </div>

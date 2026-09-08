@@ -13,3 +13,9 @@ For repair rows, the PERÍODO column must show the repair's received date throug
 **Why:** The user confirmed this represents the actual repair period and avoids duplicating the equipment description already shown under OBRA.
 
 **How to apply:** Format both dates as Mexican business dates without timezone shifting. This rule applies to summarized account statements that include R-XX repairs.
+
+Las tarjetas de resumen del Estado de Cuenta deben usar la misma población que el PDF resumido: reportes de renta sin duplicados `REPARACION...`, más reparaciones R-XX facturables. Cantidad, total, promedio y pendiente deben calcularse sobre esos mismos movimientos.
+
+**Why:** Mostrar solo reportes en las tarjetas puede omitir reparaciones no pagadas y contradecir el PDF; por ejemplo, un reporte pendiente y una R-XX pendiente deben sumarse en ambos lugares.
+
+**How to apply:** Mantener una sola regla compartida para clasificar movimientos y calcular sus saldos; no volver a implementar filtros distintos en pantalla, API y PDF.

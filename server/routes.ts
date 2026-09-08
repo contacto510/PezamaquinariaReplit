@@ -31,6 +31,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import crypto from "crypto";
+import { summarizeAccountStatement } from "@shared/account-statement";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -879,8 +880,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Cliente no encontrado" });
       }
 
-      // Obtener reportes del cliente con items y pagos en una sola query
-      const clientReports = await storage.getReportsByClientIdWithDetails(id);
+      // Obtener reportes y reparaciones para que las tarjetas usen exactamente
+      // las mismas fuentes que el Estado de Cuenta Resumido.
+      const [clientReports, clientRepairs] = await Promise.all([
+        storage.getReportsByClientIdWithDetails(id),
+        storage.getRepairsByClientId(id),
+      ]);
       
       // Procesar reportes (sin queries adicionales)
       const reportsWithItems = clientReports.map((report) => {
@@ -921,6 +926,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
 
+      const accountSummary = summarizeAccountStatement(
+        reportsWithItems,
+        clientRepairs,
+      );
+
       // Obtener todas las cotizaciones del cliente sin límite
       const clientQuotations = await db.query.quotations.findMany({
         where: eq(quotations.clientId, id),
@@ -934,6 +944,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalReportAmount: totalReportAmount.toFixed(2),
         totalPaidAmount: totalPaidAmount.toFixed(2),
         totalPendingAmount: totalPendingAmount.toFixed(2),
+        accountTotalEntries: accountSummary.totalEntries,
+        accountReportEntries: accountSummary.reportEntries,
+        accountRepairEntries: accountSummary.repairEntries,
+        accountTotalAmount: accountSummary.totalAmount.toFixed(2),
+        accountTotalPaidAmount: accountSummary.totalPaidAmount.toFixed(2),
+        accountTotalPendingAmount: accountSummary.totalPendingAmount.toFixed(2),
         reports: reportsWithItems,
         quotations: clientQuotations
       };
