@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "xk5JDX-uC05lEKJwcH12a"
+uri = "file://pezamaquinaria-version-actual.zip"
+type = "unspecified"
+title = "Proyecto Peza Maquinaria — versión actual"
+description = "ZIP con la versión actual del código del proyecto, listo para descomprimir y subir a GitHub."

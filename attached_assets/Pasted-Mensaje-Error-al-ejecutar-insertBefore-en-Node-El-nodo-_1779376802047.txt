@@ -1,0 +1,40 @@
+Mensaje: Error al ejecutar 'insertBefore' en 'Node': El nodo antes del cual se debe insertar el nuevo nodo no es un hijo de este nodo.
+
+Pila:
+NotFoundError: Error al ejecutar 'insertBefore' en 'Node': El nodo antes del cual se debe insertar el nuevo nodo no es un hijo de este nodo.
+    en tP (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:25612)
+    en ol (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:30843)
+    en m$ (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:27876)
+    en xs (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:27558)
+    en m$ (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:27868)
+    en xs (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:27558)
+    en m$ (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:27671)
+    en xs (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:27558)
+    en m$ (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:27868)
+    en xs (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:27558)
+
+Componente:
+
+    en div
+    en el botón
+    en https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:333:26666
+    en div
+    en forma
+    en Soe (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:333:32898)
+    en div
+    en vI (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:548:186604)
+    en div
+    en la parte principal
+    en div
+    en fa (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:627:1672)
+    en el componente
+    en An (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:48:3332)
+    en Nk (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:48:4147)
+    en Sze (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:627:1925)
+    en ol (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:40:30968)
+    en xae (https://renta-maquinaria-psfidalgomx.replit.app/assets/index-BIveKRJW.js:48:40957)
+    en Pze
+
+URL: https://renta-maquinaria-psfidalgomx.replit.app/reports/492/edit?clientId=91&projectId=107
+UserAgent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, como Gecko) Chrome/148.0.0.0 Mobile Safari/537.36
+Área de visualización: 384x751
