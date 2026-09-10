@@ -196,6 +196,8 @@ export default function RepairForm() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
         title: isEditMode ? "Reparación actualizada" : "Reparación creada",
         description: `La orden de reparación ha sido ${isEditMode ? 'actualizada' : 'creada'} correctamente.`,

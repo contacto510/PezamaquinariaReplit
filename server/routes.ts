@@ -32,6 +32,7 @@ import {
 import { z } from "zod";
 import crypto from "crypto";
 import { summarizeAccountStatement } from "@shared/account-statement";
+import { buildAccountsReceivable } from "@shared/accounts-receivable";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -676,134 +677,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ======================= Rutas para Clientes =======================
 
   // GET - Cuentas por cobrar agrupadas por cliente
-  // Considera solo REPORTES con saldo > 0 (total - abonos), sin importar status.
-  // Si paymentStatus === 'pagado', saldo se considera 0.
-  // Marca vencido si el reporte más antiguo de un cliente tiene > 30 días o si algún reporte tiene status 'vencido'.
+  // Reportes de renta y reparaciones cobrables, sin duplicados de reparación.
   app.get(`${apiPrefix}/accounts-receivable`, async (req, res) => {
     try {
-      const OVERDUE_DAYS_THRESHOLD = 30;
-      const now = Date.now();
-      const DAY_MS = 1000 * 60 * 60 * 24;
-
-      const allReports = await db.query.reports.findMany({
+      const [allReports, allRepairs] = await Promise.all([
+        db.query.reports.findMany({
+        columns: {
+          id: true, clientId: true, clientName: true, reportNumber: true,
+          folioReporte: true, projectId: true, nombreObra: true,
+          fechaReporte: true, total: true, paymentStatus: true,
+        },
         with: {
           payments: { columns: { amount: true } },
           client: { columns: { id: true, name: true } }
         },
         orderBy: desc(reports.fechaReporte)
-      });
-
-      type PendingReport = {
-        id: number;
-        reportNumber: string;
-        folioReporte: string;
-        projectId: number;
-        nombreObra: string;
-        fechaReporte: Date;
-        total: number;
-        paid: number;
-        balance: number;
-        paymentStatus: string;
-        daysSinceReport: number;
-        isOverdue: boolean;
-      };
-
-      type ClientGroup = {
-        clientId: number;
-        clientName: string;
-        reportsCount: number;
-        totalBilled: number;
-        totalPaid: number;
-        balance: number;
-        oldestReportDate: Date;
-        oldestDays: number;
-        hasOverdue: boolean;
-        statusBreakdown: Record<string, number>;
-        reports: PendingReport[];
-      };
-
-      const grouped = new Map<number, ClientGroup>();
-      let totalBalanceGlobal = 0;
-      let pendingReportsGlobal = 0;
-
-      for (const r of allReports) {
-        const total = parseFloat(r.total) || 0;
-        const paid = (r.payments || []).reduce(
-          (sum: number, p: any) => sum + (parseFloat(p.amount) || 0),
-          0
-        );
-        const isMarkedPaid = r.paymentStatus === "pagado";
-        const balance = isMarkedPaid ? 0 : Math.max(0, total - paid);
-
-        if (balance <= 0) continue;
-
-        const fecha = new Date(r.fechaReporte);
-        const daysSinceReport = Math.floor((now - fecha.getTime()) / DAY_MS);
-        const isOverdue =
-          r.paymentStatus === "vencido" || daysSinceReport > OVERDUE_DAYS_THRESHOLD;
-
-        pendingReportsGlobal += 1;
-        totalBalanceGlobal += balance;
-
-        const clientId = r.clientId;
-        if (!grouped.has(clientId)) {
-          grouped.set(clientId, {
-            clientId,
-            clientName: r.client?.name || r.clientName,
-            reportsCount: 0,
-            totalBilled: 0,
-            totalPaid: 0,
-            balance: 0,
-            oldestReportDate: fecha,
-            oldestDays: daysSinceReport,
-            hasOverdue: false,
-            statusBreakdown: {},
-            reports: []
-          });
-        }
-
-        const g = grouped.get(clientId)!;
-        g.reportsCount += 1;
-        g.totalBilled += total;
-        g.totalPaid += paid;
-        g.balance += balance;
-        if (fecha < g.oldestReportDate) {
-          g.oldestReportDate = fecha;
-          g.oldestDays = daysSinceReport;
-        }
-        if (isOverdue) g.hasOverdue = true;
-        g.statusBreakdown[r.paymentStatus] =
-          (g.statusBreakdown[r.paymentStatus] || 0) + 1;
-        g.reports.push({
-          id: r.id,
-          reportNumber: r.reportNumber,
-          folioReporte: r.folioReporte,
-          projectId: r.projectId,
-          nombreObra: r.nombreObra,
-          fechaReporte: fecha,
-          total,
-          paid,
-          balance,
-          paymentStatus: r.paymentStatus,
-          daysSinceReport,
-          isOverdue
-        });
-      }
-
-      const clientsList = Array.from(grouped.values()).sort(
-        (a, b) => b.balance - a.balance
-      );
-
-      return res.json({
-        summary: {
-          totalBalance: totalBalanceGlobal,
-          clientsCount: clientsList.length,
-          pendingReportsCount: pendingReportsGlobal,
-          overdueClientsCount: clientsList.filter((c) => c.hasOverdue).length,
-          overdueDaysThreshold: OVERDUE_DAYS_THRESHOLD
-        },
-        clients: clientsList
-      });
+        }),
+        db.query.repairs.findMany({
+          // Never fetch legacy image data for this summary.
+          columns: {
+            id: true, clientId: true, repairNumber: true, equipment: true,
+            receivedDate: true, total: true, status: true, paymentStatus: true,
+          },
+          with: { client: { columns: { name: true } } },
+        }),
+      ]);
+      return res.json(buildAccountsReceivable(allReports, allRepairs));
     } catch (error) {
       console.error("Error obteniendo cuentas por cobrar:", error);
       return res.status(500).json({ error: "Error al obtener cuentas por cobrar" });

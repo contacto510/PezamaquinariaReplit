@@ -56,6 +56,8 @@ export default function RepairDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
         title: "Reparación eliminada",
         description: "La reparación ha sido eliminada correctamente.",
@@ -80,6 +82,8 @@ export default function RepairDetail() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
         title: "Reparación duplicada",
         description: `Se ha creado una copia con el folio ${data.repairNumber}`,

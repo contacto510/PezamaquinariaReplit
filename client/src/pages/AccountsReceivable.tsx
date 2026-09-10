@@ -40,9 +40,22 @@ function statusBadge(status: string) {
     facturado: { label: "Facturado", cls: "bg-blue-100 text-blue-800 border-blue-300" },
     pagado: { label: "Pagado", cls: "bg-green-100 text-green-800 border-green-300" },
     vencido: { label: "Vencido", cls: "bg-red-100 text-red-800 border-red-300" },
+    "no pagada": { label: "No Pagada", cls: "bg-red-100 text-red-800 border-red-300" },
   };
-  const s = map[status] || { label: status, cls: "bg-gray-100 text-gray-800 border-gray-300" };
+  const s = map[status.toLowerCase()] || { label: status, cls: "bg-gray-100 text-gray-800 border-gray-300" };
   return <Badge variant="outline" className={s.cls}>{s.label}</Badge>;
+}
+
+function movementTypeBadge(type: "report" | "repair") {
+  return type === "repair" ? (
+    <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-300">
+      Reparación
+    </Badge>
+  ) : (
+    <Badge variant="outline" className="bg-sky-100 text-sky-800 border-sky-300">
+      Reporte
+    </Badge>
+  );
 }
 
 function ClientRow({ c }: { c: ClientReceivable }) {
@@ -91,26 +104,31 @@ function ClientRow({ c }: { c: ClientReceivable }) {
             <TableCell colSpan={7} className="bg-gray-50 p-0">
               <div className="p-4">
                 <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                  Reportes pendientes ({c.reports.length})
+                  Movimientos pendientes ({c.reports.length})
                 </div>
+                <p className="mb-2 text-xs text-gray-500">
+                  La antigüedad de una reparación se cuenta desde su recepción. Se considera vencido después de 30 días.
+                </p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-500 border-b">
-                        <th className="py-2 pr-3">Reporte</th>
-                        <th className="py-2 pr-3">Obra</th>
-                        <th className="py-2 pr-3">Fecha</th>
+                        <th className="py-2 pr-3">Tipo</th>
+                        <th className="py-2 pr-3">Folio</th>
+                        <th className="py-2 pr-3">Obra o equipo</th>
+                        <th className="py-2 pr-3">Fecha reporte / recepción</th>
                         <th className="py-2 pr-3 text-right">Total</th>
                         <th className="py-2 pr-3 text-right">Abonado</th>
                         <th className="py-2 pr-3 text-right">Saldo</th>
-                        <th className="py-2 pr-3 text-center">Días</th>
+                        <th className="py-2 pr-3 text-center">Días de antigüedad</th>
                         <th className="py-2 pr-3 text-center">Estatus</th>
                         <th className="py-2 text-center">Ver</th>
                       </tr>
                     </thead>
                     <tbody>
                       {c.reports.map((r) => (
-                        <tr key={r.id} className={r.isOverdue ? "bg-red-50/60" : ""}>
+                        <tr key={`${r.type}-${r.id}`} className={r.isOverdue ? "bg-red-50/60" : ""}>
+                          <td className="py-2 pr-3">{movementTypeBadge(r.type)}</td>
                           <td className="py-2 pr-3 font-medium">{r.reportNumber}</td>
                           <td className="py-2 pr-3 truncate max-w-[200px]">{r.nombreObra}</td>
                           <td className="py-2 pr-3 whitespace-nowrap">
@@ -124,8 +142,8 @@ function ClientRow({ c }: { c: ClientReceivable }) {
                           </td>
                           <td className="py-2 pr-3 text-center">{statusBadge(r.paymentStatus)}</td>
                           <td className="py-2 text-center">
-                            <Link href={`/reports/${r.id}/edit`}>
-                              <Button variant="ghost" size="sm" data-testid={`button-view-report-${r.id}`}>
+                            <Link href={r.type === "repair" ? `/repairs/${r.id}` : `/reports/${r.id}/edit`}>
+                              <Button variant="ghost" size="sm" data-testid={`button-view-${r.type}-${r.id}`}>
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </Link>
@@ -176,7 +194,7 @@ export default function AccountsReceivable() {
       <div className="peza-header rounded-xl p-6 mb-6">
         <h1 className="text-3xl font-bold tracking-tight text-black">Cuentas por Cobrar</h1>
         <p className="mt-2 text-lg text-black/80">
-          Saldo pendiente de reportes de renta agrupados por cliente
+          Saldo pendiente de reportes de renta y reparaciones agrupados por cliente
         </p>
       </div>
 
@@ -200,7 +218,7 @@ export default function AccountsReceivable() {
         </Card>
         <Card className="border-l-4 border-blue-500">
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-blue-600 mb-1">Reportes pendientes</p>
+            <p className="text-xs font-medium text-blue-600 mb-1">Movimientos pendientes</p>
             <p className="text-2xl font-bold text-blue-900" data-testid="text-pending-reports">
               {summary?.pendingReportsCount ?? 0}
             </p>
@@ -269,11 +287,14 @@ export default function AccountsReceivable() {
                 <TableHeader>
                   <TableRow className="bg-gray-100">
                     <TableHead className="font-semibold">Cliente</TableHead>
-                    <TableHead className="text-center font-semibold">Reportes</TableHead>
+                    <TableHead className="text-center font-semibold">Movimientos</TableHead>
                     <TableHead className="text-right font-semibold">Total facturado</TableHead>
                     <TableHead className="text-right font-semibold">Abonado</TableHead>
                     <TableHead className="text-right font-semibold">Saldo</TableHead>
-                    <TableHead className="text-center font-semibold">Antigüedad</TableHead>
+                    <TableHead className="text-center font-semibold">
+                      Antigüedad
+                      <span className="block text-xs font-normal normal-case">reporte / recepción</span>
+                    </TableHead>
                     <TableHead className="text-center font-semibold">Cliente</TableHead>
                   </TableRow>
                 </TableHeader>

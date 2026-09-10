@@ -1,8 +1,9 @@
 export interface PendingReportRow {
   id: number;
+  type: "report" | "repair";
   reportNumber: string;
   folioReporte: string;
-  projectId: number;
+  projectId: number | null;
   nombreObra: string;
   fechaReporte: string;
   total: number;

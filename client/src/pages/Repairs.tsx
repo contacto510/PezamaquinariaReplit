@@ -597,6 +597,8 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
             : r
         ) : old
       );
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
         title: "Fechas actualizadas",
         description: "Las fechas de la reparación se guardaron correctamente.",
@@ -659,6 +661,8 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
         title: "Estado actualizado",
         description: "El estado de la reparación se actualizó correctamente.",
@@ -707,6 +711,8 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
           r.id === repair.id ? { ...r, paymentStatus: newPaymentStatus } : r
         ) : old
       );
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
         title: "Estado actualizado",
         description: `Pago marcado como "${newPaymentStatus}".`,
@@ -786,6 +792,8 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
       });
       setShowDeleteDialog(false);
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
     },
     onError: (error: any) => {
       toast({

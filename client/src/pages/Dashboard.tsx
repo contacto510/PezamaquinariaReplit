@@ -376,7 +376,7 @@ export default function Dashboard() {
                       Cuentas por Cobrar
                     </h3>
                     <p className="text-sm text-gray-600">
-                      Saldo pendiente de reportes de renta
+                       Saldo pendiente de reportes de renta y reparaciones
                     </p>
                   </div>
                   <Link href="/accounts-receivable">
@@ -403,7 +403,7 @@ export default function Dashboard() {
                       </p>
                     </div>
                     <div className="bg-blue-50 rounded-lg p-3 border-l-4 border-blue-500">
-                      <p className="text-xs text-blue-600 font-medium">Reportes</p>
+                      <p className="text-xs text-blue-600 font-medium">Movimientos</p>
                       <p className="text-xl sm:text-2xl font-bold text-blue-900">
                         {receivables?.summary.pendingReportsCount ?? 0}
                       </p>
@@ -429,9 +429,12 @@ export default function Dashboard() {
                           <TableHeader>
                             <TableRow>
                               <TableHead className="font-semibold">Cliente</TableHead>
-                              <TableHead className="text-center font-semibold">Reportes</TableHead>
+                               <TableHead className="text-center font-semibold">Movimientos</TableHead>
                               <TableHead className="text-right font-semibold">Saldo</TableHead>
-                              <TableHead className="text-center font-semibold">Antigüedad</TableHead>
+                               <TableHead className="text-center font-semibold">
+                                 Antigüedad
+                                 <span className="block text-xs font-normal">reporte / recepción</span>
+                               </TableHead>
                               <TableHead className="text-center font-semibold">Acción</TableHead>
                             </TableRow>
                           </TableHeader>
