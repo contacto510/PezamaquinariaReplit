@@ -238,9 +238,10 @@ export const repairFormSchema = z.object({
   elaborationDate: z.date().optional().nullable(),
   clientReport: z.string().optional(),
   equipmentObservations: z.string().optional(),
-  image1: z.string().optional(),
-  image2: z.string().optional(),
-  image3: z.string().optional(),
+  // Sin foto = null; omitir el campo en una edición conserva la existente.
+  image1: z.string().nullable().optional(),
+  image2: z.string().nullable().optional(),
+  image3: z.string().nullable().optional(),
   includeIVA: z.boolean().default(true),
   status: z.string().default("Espera de confirmación"),
   paymentStatus: z.string().default("No Pagada"),
