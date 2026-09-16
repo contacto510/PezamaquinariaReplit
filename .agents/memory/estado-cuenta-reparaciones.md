@@ -19,3 +19,9 @@ Las tarjetas de resumen del Estado de Cuenta deben usar la misma población que 
 **Why:** Mostrar solo reportes en las tarjetas puede omitir reparaciones no pagadas y contradecir el PDF; por ejemplo, un reporte pendiente y una R-XX pendiente deben sumarse en ambos lugares.
 
 **How to apply:** Mantener una sola regla compartida para clasificar movimientos y calcular sus saldos; no volver a implementar filtros distintos en pantalla, API y PDF.
+
+En las facturas pendientes del resumen, priorizar la identificación de la obra (o del equipo en reparaciones) sobre la fecha individual, para todos los clientes.
+
+**Why:** El usuario confirmó que esta identificación resulta más útil para reconocer qué se está cobrando; el período sigue aportando el contexto temporal.
+
+**How to apply:** Conservar esa prioridad al modificar el formato del resumen, sin alterar folios ni cálculos.

@@ -230,7 +230,7 @@ export async function generatePaymentNoticePDF(
         startY: cursorY + 4,
         head: [[
           "FOLIO",
-          "FECHA",
+          "OBRA",
           "PERÍODO RENTADO",
           "IMPORTE FACTURADO",
           "ABONO RECIBIDO",
@@ -238,7 +238,7 @@ export async function generatePaymentNoticePDF(
         ]],
         body: pendientes.map((r) => [
           r.folio,
-          r.fecha,
+          r.obra,
           r.periodo,
           formatCurrency(r.importe),
           formatCurrency(r.abono),
@@ -271,7 +271,7 @@ export async function generatePaymentNoticePDF(
         },
         columnStyles: {
           0: { cellWidth: 22, fontStyle: "bold" },
-          1: { cellWidth: 24 },
+          1: { cellWidth: 24, halign: "left", overflow: "linebreak" },
           2: { cellWidth: 42 },
           3: { cellWidth: 30, halign: "right" },
           4: { cellWidth: 28, halign: "right" },
