@@ -391,6 +391,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST - Duplicate a saved quotation with a new folio and current date.
+  app.post(`${apiPrefix}/quotations/:id/duplicate`, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      return res.status(400).json({ message: "ID de cotización inválido" });
+    }
+    try {
+      const copy = await storage.duplicateQuotation(id);
+      if (!copy) {
+        return res.status(404).json({ message: "Cotización no encontrada" });
+      }
+      return res.status(201).json(copy);
+    } catch (error) {
+      console.error("Error duplicando cotización:", error);
+      return res.status(500).json({ message: "No se pudo duplicar la cotización" });
+    }
+  });
+
   // PUT - Update a quotation with items
   app.put(`${apiPrefix}/quotations/:id`, async (req, res) => {
     try {

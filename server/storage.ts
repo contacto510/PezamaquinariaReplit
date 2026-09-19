@@ -132,6 +132,69 @@ export const storage = {
     });
   },
 
+  // Copy a quotation and its items atomically, keeping the original untouched.
+  async duplicateQuotation(id: number): Promise<Quotation | null> {
+    return db.transaction(async (tx) => {
+      // Allocate the folio inside the write transaction. Concurrent duplications
+      // must not read the same MAX value.
+      await tx.execute(sql`LOCK TABLE quotations IN SHARE ROW EXCLUSIVE MODE`);
+      const original = await tx.query.quotations.findFirst({
+        where: eq(quotations.id, id),
+        with: { items: true },
+      });
+      if (!original) return null;
+      const [number] = await tx.select({
+        next: sql<number>`COALESCE(MAX(${quotations.quotationNumber}), 1000) + 1`,
+      }).from(quotations);
+      const [copy] = await tx.insert(quotations).values({
+        quotationNumber: Number(number.next),
+        clientId: original.clientId,
+        projectId: original.projectId,
+        clientName: original.clientName,
+        clientEmail: original.clientEmail,
+        projectName: original.projectName,
+        rentalPeriod: original.rentalPeriod,
+        salesperson: original.salesperson,
+        includeIVA: original.includeIVA,
+        subtotal: original.subtotal,
+        iva: original.iva,
+        total: original.total,
+      }).returning();
+      const items = original.items.length
+        ? await tx.insert(quotationItems).values(original.items.map(item => ({
+            quotationId: copy.id,
+            concept: item.concept,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            subtotal: item.subtotal,
+          }))).returning()
+        : [];
+
+      // Preserve the exact client association, including clients without email.
+      if (copy.clientId != null) {
+        await tx.update(clients).set({
+          totalQuotations: sql`${clients.totalQuotations} + 1`,
+          totalAmount: sql`${clients.totalAmount} + ${copy.total}`,
+          updatedAt: new Date(),
+        }).where(eq(clients.id, copy.clientId));
+        const project = copy.projectId != null
+          ? eq(clientProjects.id, copy.projectId)
+          : copy.projectName
+            ? and(eq(clientProjects.clientId, copy.clientId), eq(clientProjects.name, copy.projectName))
+            : undefined;
+        if (project) {
+          await tx.update(clientProjects).set({
+            totalQuotations: sql`${clientProjects.totalQuotations} + 1`,
+            totalAmount: sql`${clientProjects.totalAmount} + ${copy.total}`,
+            updatedAt: new Date(),
+          }).where(project);
+        }
+      }
+      return { ...copy, items };
+    });
+  },
+
   // Update an existing quotation
   async updateQuotation(id: number, quotationData: Partial<QuotationInsert>): Promise<Quotation | null> {
     const [updatedQuotation] = await db.update(quotations)

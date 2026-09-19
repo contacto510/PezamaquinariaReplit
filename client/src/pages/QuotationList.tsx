@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
@@ -34,6 +34,8 @@ export default function QuotationList() {
   const [emailDialog, setEmailDialog] = useState<{open: boolean, quotation?: Quotation, emailContent?: string}>({ open: false });
   const [selectedQuotations, setSelectedQuotations] = useState<number[]>([]);
   const [showDeleteDialog, setShowDeleteDialog] = useState<{open: boolean, quotationId?: number, isMultiple?: boolean}>({ open: false });
+  const [duplicatingQuotationId, setDuplicatingQuotationId] = useState<number | null>(null);
+  const duplicateInFlightRef = useRef(false);
 
   // Fetch quotations
   const { data: quotations, isLoading, isError } = useQuery<Quotation[]>({
@@ -189,6 +191,60 @@ www.pezamaquinaria.com.mx`;
     window.location.href = `/quotation?edit=${quotationNumber}`;
   };
 
+  // Handle duplicate quotation
+  const handleDuplicateQuotation = async (quotation: Quotation) => {
+    // State updates are asynchronous, so use a ref to guard rapid double clicks.
+    if (duplicateInFlightRef.current) return;
+
+    duplicateInFlightRef.current = true;
+    setDuplicatingQuotationId(quotation.id);
+
+    try {
+      const duplicatedQuotation = await apiRequest(`/api/quotations/${quotation.id}/duplicate`, {
+        method: "POST"
+      }) as Quotation;
+
+      if (!duplicatedQuotation?.quotationNumber) {
+        throw new Error("El servidor no devolvió el número de la nueva cotización.");
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/quotations'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/clients'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/stats'] })
+      ]);
+
+      toast({
+        title: "Cotización duplicada",
+        description: `Se creó la cotización COT-${duplicatedQuotation.quotationNumber}.`
+      });
+
+      handleEditQuotation(duplicatedQuotation.quotationNumber);
+    } catch (error) {
+      console.error("Error duplicating quotation:", error);
+
+      let errorMessage = "No se pudo duplicar la cotización. Intente nuevamente.";
+      if (error instanceof Error && error.message) {
+        const responseMessage = error.message.replace(/^\d+:\s*/, "");
+        try {
+          const parsed = JSON.parse(responseMessage);
+          errorMessage = parsed.message || parsed.error || responseMessage;
+        } catch {
+          errorMessage = responseMessage;
+        }
+      }
+
+      toast({
+        title: "Error al duplicar",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      duplicateInFlightRef.current = false;
+      setDuplicatingQuotationId(null);
+    }
+  };
+
   // Handle selection changes
   const handleSelectQuotation = (quotationId: number, checked: boolean) => {
     if (checked) {
@@ -265,55 +321,55 @@ www.pezamaquinaria.com.mx`;
   // Render modern table view
   const renderTableView = () => (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-      <div className="overflow-x-auto">
-        <Table>
+      <div className="w-full overflow-hidden">
+        <Table className="w-full table-fixed">
           <TableHeader>
             <TableRow className="bg-gradient-to-r from-yellow-50 to-gray-50 border-b-2 border-yellow-200">
-              <TableHead className="w-[50px] pl-6">
+              <TableHead className="w-[5%] px-2">
                 <Checkbox
                   checked={selectedQuotations.length === sortedQuotations?.length && sortedQuotations.length > 0}
                   onCheckedChange={handleSelectAll}
                   className="border-gray-400"
                 />
               </TableHead>
-              <TableHead className="font-semibold text-gray-800">
-                <div className="flex items-center gap-2">
+              <TableHead className="w-[11%] px-2 font-semibold text-gray-800">
+                <div className="flex flex-wrap items-center gap-1">
                   <i className="ri-hashtag text-yellow-600"></i>
                   No. Cotización
                 </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-800">
-                <div className="flex items-center gap-2">
+              <TableHead className="w-[13%] px-2 font-semibold text-gray-800">
+                <div className="flex flex-wrap items-center gap-1">
                   <i className="ri-user-line text-blue-600"></i>
                   Cliente
                 </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-800">
-                <div className="flex items-center gap-2">
+              <TableHead className="w-[17%] px-2 font-semibold text-gray-800">
+                <div className="flex flex-wrap items-center gap-1">
                   <i className="ri-mail-line text-green-600"></i>
                   Email
                 </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-800">
-                <div className="flex items-center gap-2">
+              <TableHead className="w-[13%] px-2 font-semibold text-gray-800">
+                <div className="flex flex-wrap items-center gap-1">
                   <i className="ri-building-line text-purple-600"></i>
                   Proyecto
                 </div>
               </TableHead>
-              <TableHead className="text-right font-semibold text-gray-800">
-                <div className="flex items-center justify-end gap-2">
+              <TableHead className="w-[11%] px-2 text-right font-semibold text-gray-800">
+                <div className="flex flex-wrap items-center justify-end gap-1">
                   <i className="ri-money-dollar-circle-line text-green-600"></i>
                   Total
                 </div>
               </TableHead>
-              <TableHead className="text-right font-semibold text-gray-800">
-                <div className="flex items-center justify-end gap-2">
+              <TableHead className="w-[11%] px-2 text-right font-semibold text-gray-800">
+                <div className="flex flex-wrap items-center justify-end gap-1">
                   <i className="ri-calendar-line text-indigo-600"></i>
                   Fecha
                 </div>
               </TableHead>
-              <TableHead className="text-center font-semibold text-gray-800 pr-6">
-                <div className="flex items-center justify-center gap-2">
+              <TableHead className="w-[19%] px-2 text-center font-semibold text-gray-800">
+                <div className="flex flex-wrap items-center justify-center gap-1">
                   <i className="ri-settings-line text-gray-600"></i>
                   Acciones
                 </div>
@@ -329,37 +385,39 @@ www.pezamaquinaria.com.mx`;
                   hover:bg-yellow-50 transition-colors duration-200 border-b border-gray-100
                 `}
               >
-                <TableCell className="pl-6">
+                <TableCell className="px-2">
                   <Checkbox
                     checked={selectedQuotations.includes(quotation.id)}
                     onCheckedChange={(checked) => handleSelectQuotation(quotation.id, checked as boolean)}
                     className="border-gray-400"
                   />
                 </TableCell>
-                <TableCell className="font-bold text-gray-900">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                <TableCell className="px-2 font-bold text-gray-900">
+                  <div className="flex min-w-0 items-center">
+                    <Badge variant="outline" className="max-w-full whitespace-normal break-all bg-yellow-100 text-yellow-800 border-yellow-300">
                       COT-{quotation.quotationNumber}
                     </Badge>
                   </div>
                 </TableCell>
-                <TableCell className="font-medium text-gray-800">
-                  {quotation.clientName}
+                <TableCell className="px-2 font-medium text-gray-800">
+                  <span className="block break-words">{quotation.clientName}</span>
                 </TableCell>
-                <TableCell className="text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{quotation.clientEmail}</span>
+                <TableCell className="px-2 text-gray-600">
+                  <div className="min-w-0">
+                    <span className="block break-all text-sm">{quotation.clientEmail}</span>
                   </div>
                 </TableCell>
-                <TableCell className="text-gray-600">
-                  {quotation.projectName || <span className="text-gray-400 italic">Sin proyecto</span>}
+                <TableCell className="px-2 text-gray-600">
+                  <span className="block break-words">
+                    {quotation.projectName || <span className="text-gray-400 italic">Sin proyecto</span>}
+                  </span>
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="font-bold text-green-700 text-lg">
+                <TableCell className="px-2 text-right">
+                  <div className="break-words font-bold text-green-700">
                     {formatCurrency(Number(quotation.total))}
                   </div>
                 </TableCell>
-                <TableCell className="text-right text-gray-600">
+                <TableCell className="px-2 text-right text-gray-600">
                   <div className="flex flex-col items-end">
                     <span className="text-sm">
                       {new Date(quotation.createdAt).toLocaleDateString('es-MX', {
@@ -376,12 +434,12 @@ www.pezamaquinaria.com.mx`;
                     </span>
                   </div>
                 </TableCell>
-                <TableCell className="text-center pr-6">
-                  <div className="flex justify-center gap-1">
+                <TableCell className="px-2 text-center">
+                  <div className="grid grid-cols-2 gap-1">
                     <Button 
                       size="sm"
                       onClick={() => handleEditQuotation(quotation.quotationNumber)}
-                      className="bg-blue-500 text-white hover:bg-blue-600 transition-colors px-2 py-1 text-xs flex items-center justify-center"
+                      className="h-auto min-w-0 whitespace-normal bg-blue-500 px-1 py-1 text-xs leading-tight text-white transition-colors hover:bg-blue-600"
                       title="Editar cotización"
                     >
                       <i className="ri-edit-line mr-1 text-xs"></i>
@@ -390,7 +448,7 @@ www.pezamaquinaria.com.mx`;
                     <Button 
                       size="sm"
                       onClick={() => handleDownloadPDF(quotation.quotationNumber)}
-                      className="bg-red-500 text-white hover:bg-red-600 transition-colors px-2 py-1 text-xs flex items-center justify-center"
+                      className="h-auto min-w-0 whitespace-normal bg-red-500 px-1 py-1 text-xs leading-tight text-white transition-colors hover:bg-red-600"
                       title="Descargar PDF"
                     >
                       <i className="ri-file-pdf-line mr-1 text-xs"></i>
@@ -400,16 +458,26 @@ www.pezamaquinaria.com.mx`;
                       size="sm"
                       onClick={() => handleSendEmail(quotation)}
                       disabled={!quotation.clientEmail}
-                      className="bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-colors px-2 py-1 text-xs flex items-center justify-center"
+                      className="h-auto min-w-0 whitespace-normal bg-green-500 px-1 py-1 text-xs leading-tight text-white transition-colors hover:bg-green-600 disabled:opacity-50"
                       title={!quotation.clientEmail ? "Sin email registrado" : "Enviar por email"}
                     >
                       <i className="ri-mail-send-line mr-1 text-xs"></i>
                       Email
                     </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleDuplicateQuotation(quotation)}
+                      disabled={duplicatingQuotationId !== null}
+                      className="col-span-2 h-auto min-w-0 whitespace-normal bg-amber-500 px-1 py-1 text-xs leading-tight text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
+                      title="Duplicar cotización"
+                    >
+                      <i className={`${duplicatingQuotationId === quotation.id ? "ri-loader-4-line animate-spin" : "ri-file-copy-line"} mr-1 text-xs`}></i>
+                      {duplicatingQuotationId === quotation.id ? "Duplicando..." : "Duplicar Cotización"}
+                    </Button>
                     <Button 
                       size="sm"
                       onClick={() => handleDeleteSingle(quotation.id)}
-                      className="bg-red-500 text-white hover:bg-red-600 transition-colors px-2 py-1 text-xs flex items-center justify-center"
+                      className="col-span-2 h-auto min-w-0 whitespace-normal bg-red-600 px-1 py-1 text-xs leading-tight text-white transition-colors hover:bg-red-700"
                       title="Eliminar cotización"
                     >
                       <i className="ri-delete-bin-line mr-1 text-xs"></i>
@@ -459,7 +527,7 @@ www.pezamaquinaria.com.mx`;
                   <i className="ri-user-line"></i>
                   <span>Cliente</span>
                 </div>
-                <div className="font-medium text-gray-900 truncate">
+                <div className="font-medium text-gray-900 break-words">
                   {quotation.clientName}
                 </div>
               </div>
@@ -469,7 +537,7 @@ www.pezamaquinaria.com.mx`;
                   <i className="ri-mail-line"></i>
                   <span>Email</span>
                 </div>
-                <div className="text-sm text-gray-700 truncate">
+                <div className="text-sm text-gray-700 break-all">
                   {quotation.clientEmail}
                 </div>
               </div>
@@ -480,18 +548,18 @@ www.pezamaquinaria.com.mx`;
                     <i className="ri-building-line"></i>
                     <span>Proyecto</span>
                   </div>
-                  <div className="text-sm text-gray-700 truncate">
+                  <div className="text-sm text-gray-700 break-words">
                     {quotation.projectName}
                   </div>
                 </div>
               )}
               
-              <div className="flex justify-center gap-2 pt-3 border-t border-gray-100">
+              <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
                 <Button 
                   variant="outline" 
                   size="sm"
                   onClick={() => handleEditQuotation(quotation.quotationNumber)}
-                  className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-colors"
+                  className="w-full text-blue-600 border-blue-300 hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-colors"
                 >
                   <i className="ri-edit-line mr-1"></i>
                   Editar
@@ -500,7 +568,7 @@ www.pezamaquinaria.com.mx`;
                   variant="outline" 
                   size="sm"
                   onClick={() => handleDownloadPDF(quotation.quotationNumber)}
-                  className="flex-1 text-red-600 border-red-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
+                  className="w-full text-red-600 border-red-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
                 >
                   <i className="ri-file-pdf-line mr-1"></i>
                   PDF
@@ -510,18 +578,29 @@ www.pezamaquinaria.com.mx`;
                   size="sm"
                   onClick={() => handleSendEmail(quotation)}
                   disabled={!quotation.clientEmail}
-                  className="flex-1 text-green-600 border-green-300 hover:bg-green-500 hover:text-white hover:border-green-500 disabled:opacity-50 transition-colors"
+                  className="w-full text-green-600 border-green-300 hover:bg-green-500 hover:text-white hover:border-green-500 disabled:opacity-50 transition-colors"
                 >
                   <i className="ri-mail-send-line mr-1"></i>
                   Email
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDuplicateQuotation(quotation)}
+                  disabled={duplicatingQuotationId !== null}
+                  className="h-auto w-full whitespace-normal border-amber-300 text-amber-700 transition-colors hover:border-amber-500 hover:bg-amber-500 hover:text-white disabled:opacity-50"
+                >
+                  <i className={`${duplicatingQuotationId === quotation.id ? "ri-loader-4-line animate-spin" : "ri-file-copy-line"} mr-1`}></i>
+                  {duplicatingQuotationId === quotation.id ? "Duplicando..." : "Duplicar Cotización"}
                 </Button>
                 <Button 
                   variant="outline" 
                   size="sm"
                   onClick={() => handleDeleteSingle(quotation.id)}
-                  className="text-red-600 border-red-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
+                  className="h-auto w-full whitespace-normal text-red-600 border-red-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
                 >
-                  <i className="ri-delete-bin-line"></i>
+                  <i className="ri-delete-bin-line mr-1"></i>
+                  Eliminar
                 </Button>
               </div>
             </div>
@@ -532,7 +611,7 @@ www.pezamaquinaria.com.mx`;
   );
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-6">
+    <div className="w-full max-w-7xl mx-auto p-3 sm:p-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
         <div className="flex-1 min-w-0">
@@ -616,7 +695,7 @@ www.pezamaquinaria.com.mx`;
           </div>
           
           {/* View Mode */}
-          <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+          <div className="hidden lg:flex border border-gray-300 rounded-lg overflow-hidden">
             <Button
               variant={viewMode === "table" ? "default" : "ghost"}
               size="sm"
@@ -723,7 +802,10 @@ www.pezamaquinaria.com.mx`;
           </div>
 
           {/* Content based on view mode */}
-          {viewMode === "table" ? renderTableView() : renderCardsView()}
+          <div className="hidden lg:block">
+            {viewMode === "table" ? renderTableView() : renderCardsView()}
+          </div>
+          <div className="lg:hidden">{renderCardsView()}</div>
         </>
       ) : (
         <div className="text-center py-12 bg-white rounded-lg shadow-sm border border-gray-200">
