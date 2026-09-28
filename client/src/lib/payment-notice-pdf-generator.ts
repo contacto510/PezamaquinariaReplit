@@ -11,6 +11,7 @@ import {
   isBillableRepair,
   isRepairReport,
 } from "@shared/account-statement";
+import { repairLiquidationDate, reportLiquidationDate } from "@shared/liquidation-date";
 
 // Colores corporativos Péza Maquinaria
 const PEZA_YELLOW: [number, number, number] = [255, 193, 7];
@@ -27,13 +28,14 @@ interface ProcessedReport {
   importe: number;
   abono: number;
   saldo: number;
+  liquidadoEl: string;
 }
 
 /**
  * Calcula el importe facturado y abonos de un reporte usando la misma
  * lógica que el Estado de Cuenta completo (sincronización con estado manual).
  */
-function processReport(report: any): ProcessedReport {
+function processReport(report: Report): ProcessedReport {
   const { total: importe, paid: abono, pending: saldo } =
     getReportAccountAmounts(report);
 
@@ -76,6 +78,7 @@ function processReport(report: any): ProcessedReport {
     importe,
     abono,
     saldo,
+    liquidadoEl: reportLiquidationDate(report),
   };
 }
 
@@ -111,6 +114,7 @@ function processRepair(repair: any): ProcessedReport {
     importe,
     abono,
     saldo,
+    liquidadoEl: repairLiquidationDate(repair.liquidatedAt),
   };
 }
 
@@ -380,13 +384,14 @@ export async function generatePaymentNoticePDF(
 
       autoTable(doc, {
         startY: cursorY + 9,
-        head: [["FOLIO", "OBRA", "PERÍODO", "IMPORTE", "ESTADO"]],
+        head: [["FOLIO", "OBRA", "PERÍODO", "IMPORTE", "ESTADO", "LIQUIDADO EL"]],
         body: liquidados.map((r) => [
           r.folio,
           r.obra,
           r.periodo,
           formatCurrency(r.importe),
           "PAGADO",
+          r.liquidadoEl,
         ]),
         theme: "striped",
         headStyles: {
@@ -403,11 +408,12 @@ export async function generatePaymentNoticePDF(
         },
         alternateRowStyles: { fillColor: LIGHT_GRAY },
         columnStyles: {
-          0: { cellWidth: 24, fontStyle: "bold" },
-          1: { cellWidth: 52 },
-          2: { cellWidth: 52 },
-          3: { cellWidth: 30, halign: "right" },
-          4: { cellWidth: 24, halign: "center" },
+          0: { cellWidth: 20, fontStyle: "bold" },
+          1: { cellWidth: 42 },
+          2: { cellWidth: 38 },
+          3: { cellWidth: 27, halign: "right" },
+          4: { cellWidth: 17, halign: "center" },
+          5: { cellWidth: 38, halign: "center", overflow: "linebreak" },
         },
         margin: { top: 20, left: marginLeft, right: marginRight, bottom: 36 },
         showHead: "everyPage",

@@ -8,3 +8,4 @@
 - [Abonos parciales distribuidos](partial-payment-allocation.md) — aplicar a saldos de reportes, no a conceptos; repartir por antigüedad o manualmente y guardar todo de forma atómica.
 - [Ediciones parciales seguras](safe-partial-edits.md) — omitir un campo conserva su valor; encabezado, conceptos y totales deben confirmarse o revertirse juntos.
 - [Sesión y publicaciones](auth-session-and-deploys.md) — la cookie del servidor manda; todo 401 debe sacar de la app y una pestaña antigua debe recuperarse tras publicar.
+- [Fechas de liquidación](liquidation-dates.md) — mostrar el registro que completó el saldo; no inferir fechas de otras ediciones ni rellenar reparaciones antiguas sin evidencia.

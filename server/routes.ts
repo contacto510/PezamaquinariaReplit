@@ -33,6 +33,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { summarizeAccountStatement } from "@shared/account-statement";
 import { buildAccountsReceivable } from "@shared/accounts-receivable";
+import { InvalidLiquidationDate, parseLiquidationDay } from "./repair-liquidation";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -2020,9 +2021,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!paymentStatus || !validPaymentStatuses.includes(paymentStatus)) {
         return res.status(400).json({ message: "Estado de pago inválido" });
       }
+
+      // A supplied date is an explicit historical correction, not a request
+      // to clear the date. Leaving Pagada clears it automatically instead.
+      if (Object.prototype.hasOwnProperty.call(req.body, "liquidatedAt") &&
+          (paymentStatus !== "Pagada" || req.body.liquidatedAt === null)) {
+        return res.status(400).json({ message: "liquidatedAt requiere una fecha válida y estado Pagada; para borrarla cambie el estado" });
+      }
+      const explicitDate = Object.prototype.hasOwnProperty.call(req.body, "liquidatedAt")
+        ? parseLiquidationDay(req.body.liquidatedAt)
+        : undefined;
       
       const repair = await storage.updateRepair(id, { 
         paymentStatus, 
+        ...(explicitDate !== undefined ? { liquidatedAt: explicitDate } : {}),
         updatedAt: new Date() 
       });
       
@@ -2033,6 +2045,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json(repair);
     } catch (error) {
       console.error(`Error al actualizar estado de pago de reparación con ID ${req.params.id}:`, error);
+      if (error instanceof InvalidLiquidationDate) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Error interno del servidor" });
     }
   });

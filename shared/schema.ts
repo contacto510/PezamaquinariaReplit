@@ -66,6 +66,7 @@ export const repairs = pgTable("repairs", {
   includeIVA: boolean("include_iva").default(true).notNull(),
   status: text("status").default("Espera de confirmación").notNull(), // Espera de confirmación, Diagnóstico, En Proceso, Entregada, Terminada, No autorizado
   paymentStatus: text("payment_status").default("No Pagada").notNull(), // Pagada, No Pagada, Cotización
+  liquidatedAt: timestamp("liquidated_at"), // Fecha de liquidación, nullable para reparaciones históricas
   reviewReason: text("review_reason"), // Razón de revisión - información interna, no se muestra en PDF
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

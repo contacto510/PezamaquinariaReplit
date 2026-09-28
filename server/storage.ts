@@ -30,6 +30,7 @@ import {
   ReportItemInsert
 } from "@shared/schema";
 import { eq, and, desc, like, ilike, or, sql, isNotNull, inArray } from "drizzle-orm";
+import { resolveLiquidatedAt } from "./repair-liquidation";
 
 function normalizeLineAmounts(quantityValue: unknown, unitPriceValue: unknown) {
   const quantityHundredths = Math.round(Number(quantityValue) * 100);
@@ -972,6 +973,7 @@ export const storage = {
         // Insertamos la reparación
         const [newRepair] = await tx.insert(repairs).values({
           ...repairData,
+          liquidatedAt: resolveLiquidatedAt(null, null, repairData.paymentStatus ?? "No Pagada"),
           clientId,
           subtotal: (subtotalCents / 100).toFixed(2),
           iva: (ivaCents / 100).toFixed(2),
@@ -1063,6 +1065,10 @@ export const storage = {
 
       const [header] = await tx.update(repairs).set({
         ...repairData,
+        liquidatedAt: resolveLiquidatedAt(
+          existing.paymentStatus, existing.liquidatedAt,
+          repairData.paymentStatus ?? existing.paymentStatus,
+        ),
         clientId,
         includeIVA,
         subtotal: (subtotalCents / 100).toFixed(2),
@@ -1082,6 +1088,7 @@ export const storage = {
   async updateRepair(id: number, repairData: Partial<RepairInsert>): Promise<Repair | null> {
     const client = await db.transaction(async (tx) => {
       try {
+        await tx.execute(sql`SELECT id FROM repairs WHERE id = ${id} FOR UPDATE`);
         // Verificamos que exista la reparación
         const existingRepair = await tx.query.repairs.findFirst({
           where: eq(repairs.id, id),
@@ -1093,7 +1100,14 @@ export const storage = {
         
         // Actualizamos la reparación
         const [updatedRepair] = await tx.update(repairs)
-          .set(repairData)
+          .set({
+            ...repairData,
+            liquidatedAt: resolveLiquidatedAt(
+              existingRepair.paymentStatus, existingRepair.liquidatedAt,
+              repairData.paymentStatus ?? existingRepair.paymentStatus,
+              repairData.liquidatedAt === null ? undefined : repairData.liquidatedAt,
+            ),
+          })
           .where(eq(repairs.id, id))
           .returning();
         

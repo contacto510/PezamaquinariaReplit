@@ -551,12 +551,37 @@ const toDateInputValue = (d: any): string => {
   }
 };
 
+const getMexicoCityToday = (): string => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const formatMexicoCityDate = (value: unknown): string | null => {
+  if (!value) return null;
+  const date = new Date(value as string | number | Date);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("es-MX", {
+    timeZone: "America/Mexico_City",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+};
+
 const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
   const [, setLocation] = useLocation();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDatesDialog, setShowDatesDialog] = useState(false);
   const [editReceivedDate, setEditReceivedDate] = useState<string>("");
   const [editDeliveryDate, setEditDeliveryDate] = useState<string>("");
+  const [isCapturingLiquidatedDate, setIsCapturingLiquidatedDate] = useState(false);
+  const [liquidatedDateInput, setLiquidatedDateInput] = useState("");
 
   const openDatesDialog = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -695,22 +720,9 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
         body: JSON.stringify({ paymentStatus: newPaymentStatus }),
       });
     },
-    onMutate: async (newPaymentStatus: string) => {
-      await queryClient.cancelQueries({ queryKey: ['/api/repairs'] });
-      const previousRepairs = queryClient.getQueryData<Repair[]>(['/api/repairs']);
-      queryClient.setQueryData<Repair[]>(['/api/repairs'],
-        (old) => old ? old.map(r =>
-          r.id === repair.id ? { ...r, paymentStatus: newPaymentStatus } : r
-        ) : old
-      );
-      return { previousRepairs };
-    },
-    onSuccess: (data: any, newPaymentStatus: string) => {
-      queryClient.setQueryData<Repair[]>(['/api/repairs'],
-        (old) => old ? old.map(r =>
-          r.id === repair.id ? { ...r, paymentStatus: newPaymentStatus } : r
-        ) : old
-      );
+    onSuccess: (_data: any, newPaymentStatus: string) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs', repair.id] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
@@ -718,18 +730,38 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
         description: `Pago marcado como "${newPaymentStatus}".`,
       });
     },
-    onError: (_error: any, _newPaymentStatus, context) => {
-      if (context?.previousRepairs) {
-        queryClient.setQueryData(['/api/repairs'], context.previousRepairs);
-      }
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "No se pudo actualizar el estado de pago.",
+        description: error?.message || "No se pudo actualizar el estado de pago.",
         variant: "destructive",
       });
     },
-    onSettled: async () => {
-      await queryClient.refetchQueries({ queryKey: ['/api/repairs'] });
+  });
+
+  const liquidatedDateMutation = useMutation({
+    mutationFn: async (liquidatedAt: string) => apiRequest(`/api/repairs/${repair.id}/payment-status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ paymentStatus: "Pagada", liquidatedAt }),
+    }),
+    onSuccess: () => {
+      setIsCapturingLiquidatedDate(false);
+      setLiquidatedDateInput("");
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs', repair.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
+      toast({
+        title: "Fecha de liquidación guardada",
+        description: "La fecha se guardó correctamente.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error al guardar la fecha",
+        description: error?.message || "No se pudo guardar la fecha de liquidación.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -935,6 +967,84 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
               </select>
             </div>
           </div>
+          {(repair as any).paymentStatus === "Pagada" && (
+            <div
+              className="rounded-md border border-green-100 bg-green-50/70 px-2.5 py-2 text-xs sm:text-sm"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-medium text-gray-700">Liquidado el:</span>
+                <span className="text-gray-800">
+                  {formatMexicoCityDate((repair as any).liquidatedAt) || "Fecha no registrada"}
+                </span>
+                {!(repair as any).liquidatedAt && !isCapturingLiquidatedDate && (
+                  <button
+                    type="button"
+                    className="ml-auto text-blue-700 underline underline-offset-2 hover:text-blue-900"
+                    onClick={() => {
+                      setLiquidatedDateInput("");
+                      setIsCapturingLiquidatedDate(true);
+                    }}
+                  >
+                    Capturar fecha
+                  </button>
+                )}
+              </div>
+              {isCapturingLiquidatedDate && (
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor={`liquidated-date-${repair.id}`} className="text-xs font-medium text-gray-700">
+                      Fecha de liquidación
+                    </label>
+                    <input
+                      id={`liquidated-date-${repair.id}`}
+                      type="date"
+                      value={liquidatedDateInput}
+                      max={getMexicoCityToday()}
+                      onChange={(e) => setLiquidatedDateInput(e.target.value)}
+                      className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs"
+                      aria-describedby={`liquidated-date-help-${repair.id}`}
+                      disabled={liquidatedDateMutation.isPending}
+                    />
+                    <span id={`liquidated-date-help-${repair.id}`} className="text-[11px] text-gray-500">
+                      No se puede elegir una fecha futura.
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => liquidatedDateMutation.mutate(liquidatedDateInput)}
+                    disabled={
+                      !liquidatedDateInput ||
+                      liquidatedDateInput > getMexicoCityToday() ||
+                      liquidatedDateMutation.isPending
+                    }
+                  >
+                    {liquidatedDateMutation.isPending ? "Guardando..." : "Guardar"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => {
+                      setIsCapturingLiquidatedDate(false);
+                      setLiquidatedDateInput("");
+                    }}
+                    disabled={liquidatedDateMutation.isPending}
+                  >
+                    Cancelar
+                  </Button>
+                  {liquidatedDateMutation.isError && (
+                    <p role="alert" className="w-full text-xs text-red-700">
+                      {(liquidatedDateMutation.error as Error)?.message || "No se pudo guardar la fecha. Inténtalo de nuevo."}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {/* Info estática — clickeable para navegar */}
           <div
             className="flex items-center gap-2 text-gray-700 cursor-pointer"

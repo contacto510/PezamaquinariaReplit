@@ -1,0 +1,1 @@
+ALTER TABLE repairs ADD COLUMN IF NOT EXISTS liquidated_at timestamp;
