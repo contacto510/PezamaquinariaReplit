@@ -5,6 +5,7 @@ import { Repair, RepairItem } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { formatCurrency, calculateIVA, calculateTotal } from "@/lib/utils";
 import { Camera } from "lucide-react";
+import { RepairLiquidationDate } from "@/components/RepairLiquidationDate";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -247,6 +248,8 @@ export default function RepairDetail() {
           {duplicateMutation.isPending ? "Duplicando..." : "Duplicar Reporte Actual"}
         </Button>
       </div>
+
+      <RepairLiquidationDate key={repair.id} repair={repair} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Información del Cliente */}
