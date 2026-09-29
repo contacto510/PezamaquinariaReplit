@@ -18,9 +18,10 @@ try {
   });
   assert.equal(login.status, 200);
   const cookie = login.headers.getSetCookie().map(c => c.split(";")[0]).join("; ");
-  const duplicate = (id: string | number, authenticated = true) =>
+  const duplicate = (id: string | number, authenticated = true, salesperson?: unknown) =>
     fetch(`${base}/api/quotations/${id}/duplicate`, {
-      method: "POST", headers: authenticated ? { Cookie: cookie } : {},
+      method: "POST", headers: authenticated ? { Cookie: cookie, "Content-Type": "application/json" } : {},
+      body: salesperson === undefined ? undefined : JSON.stringify({ salesperson }),
     });
   assert.equal((await duplicate(1, false)).status, 401);
   assert.equal((await duplicate("invalid")).status, 400);
@@ -84,7 +85,49 @@ try {
   }
   assert.deepEqual((await pool.query("SELECT * FROM quotations WHERE id=$1", [original.id])).rows[0], original);
   assert.equal((await pool.query("SELECT total_quotations FROM client_projects WHERE id=$1", [projectId])).rows[0].total_quotations, 3);
-  console.log("PASS: authentication, invalid/missing IDs, concurrent unique folios, complete copies, preserved original and associations.");
+
+  const request = (method: string, path: string, body?: unknown) => fetch(`${base}${path}`, {
+    method, headers: { Cookie: cookie, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const quotation = {
+    clientId, clientName: name, clientEmail: "N/A", projectName: "Test project",
+    subtotal: "100", iva: "16", total: "116", includeIVA: true,
+  };
+  const items = [{ concept: "Equipo de prueba", quantity: "2", unit: "Día", unitPrice: "50", subtotal: "100" }];
+  for (const seller of [undefined, null, "", "   "]) {
+    assert.equal((await request("POST", "/api/quotations", {
+      quotation: { ...quotation, salesperson: seller }, items,
+    })).status, 400);
+  }
+  const createdResponse = await request("POST", "/api/quotations", {
+    quotation: { ...quotation, salesperson: "  Carmen  " }, items,
+  });
+  assert.equal(createdResponse.status, 201);
+  const created = await createdResponse.json();
+  assert.equal(created.salesperson, "Carmen");
+  const read = await request("GET", `/api/quotations/${created.id}`);
+  assert.equal(read.status, 200);
+  assert.equal((await read.json()).salesperson, "Carmen");
+  const update = (seller?: unknown) => request("PUT", `/api/quotations/${created.id}`, {
+    quotation: seller === undefined ? { projectName: "Test project updated" } : { salesperson: seller },
+  });
+  for (const seller of [null, "", "   "]) assert.equal((await update(seller)).status, 400);
+  assert.equal((await update()).status, 200);
+  assert.equal((await request("GET", `/api/quotations/${created.id}`).then(r => r.json())).salesperson, "Carmen");
+  assert.equal((await update("  Dolores  ")).status, 200);
+  assert.equal((await request("GET", `/api/quotations/${created.id}`).then(r => r.json())).salesperson, "Dolores");
+
+  // A legacy quotation must receive a seller on edit or on duplication, without changing its source.
+  await pool.query("UPDATE quotations SET salesperson=NULL WHERE id=$1", [original.id]);
+  assert.equal((await request("PUT", `/api/quotations/${original.id}`, { quotation: { projectName: "No change" } })).status, 400);
+  assert.equal((await duplicate(original.id)).status, 400);
+  assert.equal((await duplicate(original.id, true, "   ")).status, 400);
+  const rescued = await duplicate(original.id, true, "  Elena  ");
+  assert.equal(rescued.status, 201);
+  assert.equal((await rescued.json()).salesperson, "Elena");
+  assert.equal((await pool.query("SELECT salesperson FROM quotations WHERE id=$1", [original.id])).rows[0].salesperson, null);
+  console.log("PASS: create/read/update seller validation and persistence; duplicate original seller, legacy override and untouched source.");
 } finally {
   if (clientId !== undefined) {
     await pool.query("DELETE FROM quotations WHERE client_id=$1", [clientId]);

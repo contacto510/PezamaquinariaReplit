@@ -186,7 +186,7 @@ export const quotationFormSchema = z.object({
   clientEmail: z.string().optional().transform(val => val && val.trim() !== "" ? val : "N/A"),
   projectName: z.string().optional(),
   rentalPeriod: z.string().optional(),
-  salesperson: z.string().optional(),
+  salesperson: z.string().trim().min(1, { message: "El vendedor es requerido" }),
   includeIVA: z.boolean().default(true),
 });
 

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,6 +37,8 @@ export default function QuotationList() {
   const [showDeleteDialog, setShowDeleteDialog] = useState<{open: boolean, quotationId?: number, isMultiple?: boolean}>({ open: false });
   const [duplicatingQuotationId, setDuplicatingQuotationId] = useState<number | null>(null);
   const duplicateInFlightRef = useRef(false);
+  const [missingSellerQuotation, setMissingSellerQuotation] = useState<Quotation | null>(null);
+  const [duplicateSeller, setDuplicateSeller] = useState("");
 
   // Fetch quotations
   const { data: quotations, isLoading, isError } = useQuery<Quotation[]>({
@@ -192,16 +195,21 @@ www.pezamaquinaria.com.mx`;
   };
 
   // Handle duplicate quotation
-  const handleDuplicateQuotation = async (quotation: Quotation) => {
+  const handleDuplicateQuotation = async (quotation: Quotation, salespersonOverride?: string) => {
     // State updates are asynchronous, so use a ref to guard rapid double clicks.
     if (duplicateInFlightRef.current) return;
+    if (!quotation.salesperson?.trim() && !salespersonOverride?.trim()) {
+      setMissingSellerQuotation(quotation);
+      return;
+    }
 
     duplicateInFlightRef.current = true;
     setDuplicatingQuotationId(quotation.id);
 
     try {
       const duplicatedQuotation = await apiRequest(`/api/quotations/${quotation.id}/duplicate`, {
-        method: "POST"
+        method: "POST",
+        ...(salespersonOverride ? { body: JSON.stringify({ salesperson: salespersonOverride.trim() }) } : {})
       }) as Quotation;
 
       if (!duplicatedQuotation?.quotationNumber) {
@@ -219,6 +227,8 @@ www.pezamaquinaria.com.mx`;
         description: `Se creó la cotización COT-${duplicatedQuotation.quotationNumber}.`
       });
 
+      setMissingSellerQuotation(null);
+      setDuplicateSeller("");
       handleEditQuotation(duplicatedQuotation.quotationNumber);
     } catch (error) {
       console.error("Error duplicating quotation:", error);
@@ -401,6 +411,9 @@ www.pezamaquinaria.com.mx`;
                 </TableCell>
                 <TableCell className="px-2 font-medium text-gray-800">
                   <span className="block break-words">{quotation.clientName}</span>
+                  <span className="mt-1 block break-words text-xs font-normal text-gray-500">
+                    Vendedor: {quotation.salesperson?.trim() || "Sin registrar"}
+                  </span>
                 </TableCell>
                 <TableCell className="px-2 text-gray-600">
                   <div className="min-w-0">
@@ -530,6 +543,9 @@ www.pezamaquinaria.com.mx`;
                 <div className="font-medium text-gray-900 break-words">
                   {quotation.clientName}
                 </div>
+                <div className="mt-1 break-words text-sm text-gray-600">
+                  Vendedor: {quotation.salesperson?.trim() || "Sin registrar"}
+                </div>
               </div>
               
               <div>
@@ -612,6 +628,40 @@ www.pezamaquinaria.com.mx`;
 
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-6">
+      <Dialog open={missingSellerQuotation !== null} onOpenChange={(open) => {
+        if (!open && !duplicateInFlightRef.current) {
+          setMissingSellerQuotation(null);
+          setDuplicateSeller("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Vendedor requerido para duplicar</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            La cotización original no tiene vendedor. Indica quién será el vendedor de la copia; la original no cambiará.
+          </p>
+          <Label htmlFor="duplicate-salesperson">Vendedor *</Label>
+          <Input
+            id="duplicate-salesperson"
+            value={duplicateSeller}
+            onChange={(event) => setDuplicateSeller(event.target.value)}
+            placeholder="Nombre del vendedor"
+            required
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={duplicatingQuotationId !== null} onClick={() => setMissingSellerQuotation(null)}>Cancelar</Button>
+            <Button
+              disabled={!duplicateSeller.trim() || duplicatingQuotationId !== null}
+              onClick={() => {
+                if (missingSellerQuotation) void handleDuplicateQuotation(missingSellerQuotation, duplicateSeller.trim());
+              }}
+            >
+              {duplicatingQuotationId !== null ? "Duplicando..." : "Duplicar cotización"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
         <div className="flex-1 min-w-0">

@@ -191,17 +191,23 @@ export default function QuotationForm({
               <FormItem className="md:col-span-3">
                 <FormLabel className="text-sm font-medium text-gray-700">
                   <i className="ri-user-star-line mr-2 text-gray-500"></i>
-                  Vendedor
+                  Vendedor <span className="text-red-600" aria-hidden="true">*</span>
                 </FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="Ej: Juan Pérez" 
-                    {...field} 
+                    {...field}
+                    required
+                    aria-required="true"
+                    onChange={(event) => {
+                      field.onChange(event);
+                      setClientInfo({ ...form.getValues(), salesperson: event.target.value });
+                    }}
                     className="w-full mt-1 border-gray-300 focus:border-yellow-400 focus:ring-yellow-400" 
                   />
                 </FormControl>
                 <p className="text-xs text-gray-500 mt-1">
-                  Nombre del vendedor que atendió al cliente
+                  Obligatorio: nombre del vendedor que atendió al cliente
                 </p>
                 <FormMessage />
               </FormItem>
@@ -307,7 +313,10 @@ export default function QuotationForm({
                 <FormControl>
                   <Switch
                     checked={field.value}
-                    onCheckedChange={field.onChange}
+                    onCheckedChange={(checked) => {
+                      field.onChange(checked);
+                      setClientInfo({ ...form.getValues(), includeIVA: checked });
+                    }}
                     className="data-[state=checked]:bg-yellow-400"
                   />
                 </FormControl>

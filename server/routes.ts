@@ -2,7 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import multer from "multer";
 import { Client as ObjectStorageClient } from "@replit/object-storage";
-import { storage } from "./storage";
+import { storage, MissingQuotationSalespersonError } from "./storage";
 import { sendQuotationEmail } from "./email";
 import { db } from "@db";
 import { reports, reportItems, reportPayments, clients, clientProjects, quotations, repairs as repairsTable } from "@shared/schema";
@@ -358,6 +358,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/quotations`, async (req, res) => {
     try {
       const { quotation, items } = req.body;
+      const seller = z.string().trim().min(1).safeParse(quotation?.salesperson);
+      if (!seller.success) {
+        return res.status(400).json({ message: "El vendedor es requerido" });
+      }
       
       // Obtenemos el número de cotización más reciente
       const nextQuotationNumber = await storage.getNextQuotationNumber();
@@ -366,6 +370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Sobreescribimos el número de cotización para asegurar que sea único
       const quotationWithUpdatedNumber = {
         ...quotation,
+        salesperson: seller.data,
         quotationNumber: nextQuotationNumber
       };
       
@@ -399,12 +404,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "ID de cotización inválido" });
     }
     try {
-      const copy = await storage.duplicateQuotation(id);
+      let salespersonOverride: string | undefined;
+      if (req.body?.salesperson !== undefined) {
+        const seller = z.string().trim().min(1).safeParse(req.body.salesperson);
+        if (!seller.success) {
+          return res.status(400).json({ message: "El vendedor es requerido" });
+        }
+        salespersonOverride = seller.data;
+      }
+      const copy = await storage.duplicateQuotation(id, salespersonOverride);
       if (!copy) {
         return res.status(404).json({ message: "Cotización no encontrada" });
       }
       return res.status(201).json(copy);
     } catch (error) {
+      if (error instanceof MissingQuotationSalespersonError) {
+        return res.status(400).json({ message: error.message });
+      }
       console.error("Error duplicando cotización:", error);
       return res.status(500).json({ message: "No se pudo duplicar la cotización" });
     }
@@ -425,10 +441,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!originalQuotation) {
         return res.status(404).json({ message: "Cotización no encontrada" });
       }
+      // An omitted seller preserves the saved value; explicit blanks are invalid.
+      let salesperson = originalQuotation.salesperson?.trim();
+      if (quotation?.salesperson !== undefined) {
+        const seller = z.string().trim().min(1).safeParse(quotation.salesperson);
+        if (!seller.success) {
+          return res.status(400).json({ message: "El vendedor es requerido" });
+        }
+        salesperson = seller.data;
+      }
+      if (!salesperson) {
+        return res.status(400).json({ message: "El vendedor es requerido" });
+      }
       
       // Aseguramos que el número de cotización no cambie en la actualización
       const quotationWithOriginalNumber = {
         ...quotation,
+        salesperson,
         quotationNumber: originalQuotation.quotationNumber
       };
       

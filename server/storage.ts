@@ -32,6 +32,12 @@ import {
 import { eq, and, desc, like, ilike, or, sql, isNotNull, inArray } from "drizzle-orm";
 import { resolveLiquidatedAt } from "./repair-liquidation";
 
+export class MissingQuotationSalespersonError extends Error {
+  constructor() {
+    super("El vendedor es requerido para duplicar la cotización");
+  }
+}
+
 function normalizeLineAmounts(quantityValue: unknown, unitPriceValue: unknown) {
   const quantityHundredths = Math.round(Number(quantityValue) * 100);
   const unitPriceCents = Math.round(Number(unitPriceValue) * 100);
@@ -134,7 +140,7 @@ export const storage = {
   },
 
   // Copy a quotation and its items atomically, keeping the original untouched.
-  async duplicateQuotation(id: number): Promise<Quotation | null> {
+  async duplicateQuotation(id: number, salespersonOverride?: string): Promise<Quotation | null> {
     return db.transaction(async (tx) => {
       // Allocate the folio inside the write transaction. Concurrent duplications
       // must not read the same MAX value.
@@ -144,6 +150,9 @@ export const storage = {
         with: { items: true },
       });
       if (!original) return null;
+      // Existing seller always wins; older quotations without one require an override.
+      const salesperson = original.salesperson?.trim() || salespersonOverride?.trim();
+      if (!salesperson) throw new MissingQuotationSalespersonError();
       const [number] = await tx.select({
         next: sql<number>`COALESCE(MAX(${quotations.quotationNumber}), 1000) + 1`,
       }).from(quotations);
@@ -155,7 +164,7 @@ export const storage = {
         clientEmail: original.clientEmail,
         projectName: original.projectName,
         rentalPeriod: original.rentalPeriod,
-        salesperson: original.salesperson,
+        salesperson,
         includeIVA: original.includeIVA,
         subtotal: original.subtotal,
         iva: original.iva,

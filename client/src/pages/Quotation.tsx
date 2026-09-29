@@ -210,6 +210,8 @@ export default function Quotation() {
     mutationFn: async () => {
       if (!quotationNumber) throw new Error("No hay número de cotización");
       if (!clientInfo.clientName) throw new Error("El nombre del cliente es requerido");
+      const salesperson = clientInfo.salesperson.trim();
+      if (!salesperson) throw new Error("El vendedor es requerido");
       
       // Aseguramos que el email sea N/A si está vacío antes de enviar
       const finalEmail = clientInfo.clientEmail && clientInfo.clientEmail.trim() !== "" 
@@ -226,6 +228,7 @@ export default function Quotation() {
           clientEmail: finalEmail,
           projectName: clientInfo.projectName || "",
           rentalPeriod: clientInfo.rentalPeriod || "",
+          salesperson,
           includeIVA: clientInfo.includeIVA,
           subtotal: subtotal.toString(),
           iva: iva.toString(),
