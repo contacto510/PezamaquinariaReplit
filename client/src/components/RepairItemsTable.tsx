@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { RepairItemData, Concept } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import RepairPriceInput from "@/components/RepairPriceInput";
 import {
   Table,
   TableBody,
@@ -306,25 +307,10 @@ export default function RepairItemsTable({
                 </Select>
               </TableCell>
               <TableCell className="text-right">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.unitPrice.toString()}
-                  onChange={(e) => {
-                    e.preventDefault(); // Prevenir el envío del formulario
-                    const value = parseNumber(e.target.value);
-                    if (value >= 0) {
-                      const updatedItem = { ...item, unitPrice: value };
-                      updateItemWithSubtotal(index, updatedItem);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault(); // Prevenir que la tecla Enter envíe el formulario
-                    }
-                  }}
-                  className="w-full text-right"
+                <RepairPriceInput
+                  value={Number(item.unitPrice)}
+                  label={`Precio unitario del concepto ${index + 1}`}
+                  onChange={unitPrice => updateItemWithSubtotal(index, { ...item, unitPrice })}
                 />
               </TableCell>
               <TableCell className="text-right font-medium">
