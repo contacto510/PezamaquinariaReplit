@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import QuotationForm from "@/components/QuotationForm";
 import QuotationItemsTable from "@/components/QuotationItemsTable";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { calculateTotal, calculateIVA, preparePDFWindowForIOS } from "@/lib/utils";
 import type { 
   QuotationFormData, 
@@ -37,6 +38,8 @@ export default function Quotation() {
   const [iva, setIva] = useState<number>(0);
   const [total, setTotal] = useState<number>(0);
   const [isUpdatingAndDownloading, setIsUpdatingAndDownloading] = useState(false);
+  const [savedQuotation, setSavedQuotation] = useState<{ number: number; clientId: string | null } | null>(null);
+  const [isDownloadingSaved, setIsDownloadingSaved] = useState(false);
 
   // Fetch next quotation number (solo para nuevas cotizaciones)
   const { 
@@ -258,14 +261,14 @@ export default function Quotation() {
         });
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (saved: Quotation) => {
       // Verificar si viene de un cliente específico ANTES de invalidar cachés
       const urlParams = new URLSearchParams(window.location.search);
       const clientIdParam = urlParams.get('clientId');
       
       toast({
         title: isEditMode ? "¡Cotización actualizada!" : "¡Cotización guardada!",
-        description: `La cotización #${quotationNumber} ha sido ${isEditMode ? 'actualizada' : 'guardada'} exitosamente.`,
+        description: `La cotización #${saved.quotationNumber} ha sido ${isEditMode ? 'actualizada' : 'guardada'} exitosamente.`,
       });
 
       // Invalidar cachés para refrescar datos
@@ -280,15 +283,12 @@ export default function Quotation() {
         queryClient.invalidateQueries({ queryKey: ['/api/clients', parseInt(clientIdParam)] });
       }
       
-      // Si viene de un cliente específico, regresar a ese cliente después de guardar
-      if (clientIdParam && !isEditMode) {
-        // Pequeño delay para que el usuario vea el toast de confirmación
-        setTimeout(() => {
-          navigate(`/clients/${clientIdParam}`);
-        }, 1500);
-      } else if (!isEditMode) {
+      // Keep the saved server folio available here, even if the next folio changes.
+      // Do not redirect before the user has the opportunity to download.
+      if (!isEditMode) {
+        setSavedQuotation({ number: saved.quotationNumber, clientId: clientIdParam });
         // Si no viene de un cliente, resetear el formulario para crear otra cotización
-        setClientInfo({
+        if (!clientIdParam) setClientInfo({
           clientName: "",
           clientEmail: "",
           projectName: "",
@@ -336,6 +336,26 @@ export default function Quotation() {
   // Handle saving the quotation
   const handleSaveQuotation = () => {
     saveQuotationMutation.mutate();
+  };
+
+  const handleDownloadSaved = async () => {
+    if (!savedQuotation || isDownloadingSaved) return;
+    const number = savedQuotation.number;
+    const preparedWindow = preparePDFWindowForIOS();
+    setIsDownloadingSaved(true);
+    try {
+      const { downloadEnhancedQuotationPDF } = await import("@/lib/enhanced-pdf-generator");
+      await downloadEnhancedQuotationPDF(number, preparedWindow);
+    } catch (error) {
+      if (preparedWindow && !preparedWindow.closed) preparedWindow.close();
+      toast({
+        title: "No se pudo descargar el PDF",
+        description: error instanceof Error ? error.message : "La cotización sigue guardada. Puedes intentar descargarla nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloadingSaved(false);
+    }
   };
 
   // En edición, guardar primero y descargar después para asegurar que el PDF
@@ -390,6 +410,33 @@ export default function Quotation() {
 
   return (
     <div className="w-full max-w-7xl mx-auto">
+      <Dialog open={savedQuotation !== null} onOpenChange={(open) => {
+        if (!open && !isDownloadingSaved) setSavedQuotation(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¡Cotización #{savedQuotation?.number} guardada!</DialogTitle>
+            <DialogDescription>
+              Descarga el PDF de la cotización que acabas de guardar, sin salir de esta pantalla.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Button onClick={handleDownloadSaved} disabled={isDownloadingSaved}>
+              <i className={`${isDownloadingSaved ? "ri-loader-4-line animate-spin" : "ri-download-2-line"} mr-2`} />
+              {isDownloadingSaved ? "Preparando PDF..." : "Descargar PDF"}
+            </Button>
+            {savedQuotation?.clientId && (
+              <Button variant="outline" disabled={isDownloadingSaved}
+                onClick={() => navigate(`/clients/${savedQuotation.clientId}`)}>
+                Volver al cliente
+              </Button>
+            )}
+            <Button variant="outline" disabled={isDownloadingSaved} onClick={() => setSavedQuotation(null)}>
+              Continuar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Header con diseño corporativo Péza */}
       <div className="peza-header rounded-xl p-6 mb-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
