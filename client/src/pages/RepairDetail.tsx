@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Repair, RepairItem } from "@shared/schema";
+import { normalizeRepairStatus } from "@shared/repair-status";
 import { apiRequest } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/utils";
 import { Camera } from "lucide-react";
@@ -128,6 +129,9 @@ export default function RepairDetail() {
   };
 
   const getStatusBadge = (status: string) => {
+    if (normalizeRepairStatus(status) === "Taller") {
+      return <Badge variant="outline" className="bg-cyan-100 text-cyan-800 border-cyan-200">Taller</Badge>;
+    }
     switch (status) {
       case 'pending':
         return <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">Pendiente</Badge>;

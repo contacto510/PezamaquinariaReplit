@@ -31,6 +31,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import crypto from "crypto";
+import { normalizeRepairStatus } from "@shared/repair-status";
 import { summarizeAccountStatement } from "@shared/account-statement";
 import { buildAccountsReceivable } from "@shared/accounts-receivable";
 import { InvalidLiquidationDate, parseLiquidationDay } from "./repair-liquidation";
@@ -1985,8 +1986,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "ID inválido" });
       }
       
-      const { status } = req.body;
-      const validStatuses = ["Espera de confirmación", "Diagnóstico", "En Proceso", "Entregada", "Terminada", "No Entregada", "No autorizado"];
+      const status = typeof req.body.status === "string" ? normalizeRepairStatus(req.body.status) : "";
+      const validStatuses = ["Espera de confirmación", "Taller", "En Proceso", "Entregada", "Terminada", "No autorizado"];
       
       if (!status || !validStatuses.includes(status)) {
         return res.status(400).json({ message: "Estado inválido" });

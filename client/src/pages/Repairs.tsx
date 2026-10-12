@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, memo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Repair } from "@shared/schema";
+import { normalizeRepairStatus, migrateRepairTabOrder } from "@shared/repair-status";
 import RepairReviewPayment from "@/components/RepairReviewPayment";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,11 +38,10 @@ import { Wrench, Plus, Package, Calendar, CheckCircle, Clock, Trash2, ChevronDow
 
 const STATUS_OPTIONS = [
   { value: 'Espera de confirmación', label: 'Espera', icon: Hourglass, color: 'amber' },
-  { value: 'Diagnóstico', label: 'Diagnóstico', icon: ClipboardList, color: 'cyan' },
+  { value: 'Taller', label: 'Taller', icon: ClipboardList, color: 'cyan' },
   { value: 'En Proceso', label: 'En Proceso', icon: Clock, color: 'purple' },
   { value: 'Entregada', label: 'Entregada', icon: Truck, color: 'green' },
   { value: 'Terminada', label: 'Terminada', icon: CheckCircle, color: 'teal' },
-  { value: 'No Entregada', label: 'No Entregada', icon: PackageX, color: 'orange' },
   { value: 'No autorizado', label: 'No Autorizado', icon: XCircle, color: 'red' },
 ];
 
@@ -52,12 +52,11 @@ const DEFAULT_TAB_ORDER = [
   'En Proceso',
   'Terminada',
   'Entregada',
-  'No Entregada',
   'Pagada',
   'No Pagada',
   'Revisión',
   'No autorizado',
-  'Diagnóstico',
+  'Taller',
   'Cotización',
 ];
 const TAB_ORDER_STORAGE_KEY = 'repairsTabOrder';
@@ -67,9 +66,7 @@ function loadTabOrder(): string[] {
     const saved = JSON.parse(localStorage.getItem(TAB_ORDER_STORAGE_KEY) || 'null');
     if (Array.isArray(saved)) {
       // Sanitizar: conservar solo pestañas válidas y agregar las que falten
-      const valid = saved.filter((v) => DEFAULT_TAB_ORDER.includes(v));
-      const missing = DEFAULT_TAB_ORDER.filter((v) => !valid.includes(v));
-      return [...valid, ...missing];
+      return migrateRepairTabOrder(saved, DEFAULT_TAB_ORDER);
     }
   } catch {}
   return DEFAULT_TAB_ORDER;
@@ -163,7 +160,7 @@ export default function Repairs() {
     const grouped: Record<string, Repair[]> = {};
     STATUS_OPTIONS.forEach(status => {
       grouped[status.value] = filteredRepairs.filter(r =>
-        r.status?.toLowerCase() === status.value.toLowerCase()
+        normalizeRepairStatus(r.status || "").toLowerCase() === status.value.toLowerCase()
       );
     });
     return grouped;
@@ -733,11 +730,10 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
   const getStatusStyles = (status: string) => {
     const normalized = status?.toLowerCase() || '';
     if (normalized === 'espera de confirmación') return "bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200";
-    if (normalized === 'diagnóstico') return "bg-cyan-100 text-cyan-800 border-cyan-300 hover:bg-cyan-200";
+    if (normalizeRepairStatus(status) === 'Taller') return "bg-cyan-100 text-cyan-800 border-cyan-300 hover:bg-cyan-200";
     if (normalized === 'en proceso') return "bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200";
     if (normalized === 'entregada') return "bg-green-100 text-green-800 border-green-300 hover:bg-green-200";
     if (normalized === 'terminada') return "bg-teal-100 text-teal-800 border-teal-300 hover:bg-teal-200";
-    if (normalized === 'no entregada') return "bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200";
     if (normalized === 'no autorizado') return "bg-red-100 text-red-800 border-red-300 hover:bg-red-200";
     return "bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200";
   };
@@ -747,8 +743,8 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
     if (normalized === 'entregada' || normalized === 'terminada') {
       return <CheckCircle className="w-3 h-3" />;
     }
-    if (normalized === 'no entregada') {
-      return <PackageX className="w-3 h-3" />;
+    if (normalizeRepairStatus(status) === 'Taller') {
+      return <ClipboardList className="w-3 h-3" />;
     }
     return <Clock className="w-3 h-3" />;
   };
@@ -756,22 +752,20 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
   const getStatusLabel = (status: string) => {
     const normalized = status?.toLowerCase() || '';
     if (normalized === 'espera de confirmación') return 'Espera confirm.';
-    if (normalized === 'diagnóstico') return 'Diagnóstico';
+    if (normalizeRepairStatus(status) === 'Taller') return 'Taller';
     if (normalized === 'en proceso') return 'En Proceso';
     if (normalized === 'entregada') return 'Entregada';
     if (normalized === 'terminada') return 'Terminada';
-    if (normalized === 'no entregada') return 'No Entregada';
     if (normalized === 'no autorizado') return 'No Autorizado';
     return status || 'Sin estado';
   };
 
   const statusOptions = [
     { value: 'Espera de confirmación', label: 'Espera de confirmación' },
-    { value: 'Diagnóstico', label: 'Diagnóstico' },
+    { value: 'Taller', label: 'Taller' },
     { value: 'En Proceso', label: 'En Proceso' },
     { value: 'Entregada', label: 'Entregada' },
     { value: 'Terminada', label: 'Terminada' },
-    { value: 'No Entregada', label: 'No Entregada' },
     { value: 'No autorizado', label: 'No autorizado' },
   ];
 
@@ -871,16 +865,16 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
                     <DropdownMenuItem
                       key={option.value}
                       onSelect={() => {
-                        if (option.value !== repair.status) {
+                        if (option.value !== normalizeRepairStatus(repair.status)) {
                           statusMutation.mutate(option.value);
                         }
                       }}
-                      className={`cursor-pointer ${repair.status === option.value ? 'bg-gray-100 font-medium' : ''}`}
+                      className={`cursor-pointer ${normalizeRepairStatus(repair.status) === option.value ? 'bg-gray-100 font-medium' : ''}`}
                     >
                       <div className="flex items-center gap-2">
                         {getStatusIcon(option.value)}
                         <span>{option.label}</span>
-                        {repair.status === option.value && (
+                        {normalizeRepairStatus(repair.status) === option.value && (
                           <CheckCircle className="w-3 h-3 ml-auto text-green-600" />
                         )}
                       </div>

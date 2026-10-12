@@ -11,3 +11,4 @@
 - [Sesión y publicaciones](auth-session-and-deploys.md) — la cookie del servidor manda; todo 401 debe sacar de la app y una pestaña antigua debe recuperarse tras publicar.
 - [Fechas de liquidación](liquidation-dates.md) — mostrar el registro que completó el saldo; no inferir fechas de otras ediciones ni rellenar reparaciones antiguas sin evidencia.
 - [Cobro de revisión](repair-review-billing.md) — solo revisión cobra únicamente ese importe; al autorizar reparación se suma una sola vez a los conceptos.
+- [Taller en reparaciones](repair-workshop.md) — reunir Diagnóstico y No Entregada sin borrar órdenes ni reescribir estados antes de publicar.

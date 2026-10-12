@@ -187,7 +187,7 @@ export async function generatePaymentNoticePDF(
     // y las que no tienen importe.
     // Solo reparaciones confirmadas: se excluyen las "No autorizado", las que
     // siguen en cotización (paymentStatus "Cotización") y las que aún están en
-    // "Espera de confirmación" o "Diagnóstico" (trabajo no confirmado).
+    // "Espera de confirmación" o "Taller" (antes Diagnóstico; trabajo no confirmado).
     const billableRepairs = repairs.filter(isBillableRepair);
     // Excluir reportes de renta capturados como "REPARACION": esas reparaciones
     // ya vienen del panel de Reparaciones (folios R-XX) y se duplicarían.

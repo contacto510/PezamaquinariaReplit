@@ -17,6 +17,7 @@ const EXCLUDED_REPAIR_STATUSES = new Set([
   "No autorizado",
   "Espera de confirmación",
   "Diagnóstico",
+  "Taller",
 ]);
 
 function money(value: unknown): number {

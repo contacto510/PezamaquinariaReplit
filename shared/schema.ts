@@ -2,6 +2,7 @@ import { pgTable, text, serial, integer, boolean, numeric, timestamp } from "dri
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { relations } from "drizzle-orm";
 import { z } from "zod";
+import { normalizeRepairStatus } from "./repair-status";
 
 // Tabla de clientes
 export const clients = pgTable("clients", {
@@ -64,7 +65,7 @@ export const repairs = pgTable("repairs", {
   iva: numeric("iva", { precision: 10, scale: 2 }).default("0").notNull(),
   total: numeric("total", { precision: 10, scale: 2 }).default("0").notNull(),
   includeIVA: boolean("include_iva").default(true).notNull(),
-  status: text("status").default("Espera de confirmación").notNull(), // Espera de confirmación, Diagnóstico, En Proceso, Entregada, Terminada, No autorizado
+  status: text("status").default("Espera de confirmación").notNull(), // Espera de confirmación, Taller, En Proceso, Entregada, Terminada, No autorizado
   paymentStatus: text("payment_status").default("No Pagada").notNull(), // Pagada, No Pagada, Cotización
   liquidatedAt: timestamp("liquidated_at"), // Fecha de liquidación, nullable para reparaciones históricas
   reviewReason: text("review_reason"), // Razón de revisión - información interna, no se muestra en PDF
@@ -246,7 +247,7 @@ export const repairFormSchema = z.object({
   image2: z.string().nullable().optional(),
   image3: z.string().nullable().optional(),
   includeIVA: z.boolean().default(true),
-  status: z.string().default("Espera de confirmación"),
+  status: z.string().default("Espera de confirmación").transform(normalizeRepairStatus),
   paymentStatus: z.string().default("No Pagada"),
   reviewReason: z.string().optional(),
   reviewAmount: z.union([z.string(), z.number()])

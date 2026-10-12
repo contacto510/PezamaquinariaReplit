@@ -10,6 +10,7 @@ import { es } from "date-fns/locale";
 import { RepairFormData, repairFormSchema, RepairItemData, Concept, Client } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { calculateRepairReviewTotals } from "@shared/repair-review";
+import { normalizeRepairStatus } from "@shared/repair-status";
 import { formatCurrency } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -313,7 +314,7 @@ export default function RepairForm() {
         deliveryDate: repair.deliveryDate ? new Date(repair.deliveryDate) : null,
         departureDate: repair.departureDate ? new Date(repair.departureDate) : null,
         elaborationDate: repair.elaborationDate ? new Date(repair.elaborationDate) : null,
-        status: repair.status || "Espera de confirmación",
+        status: normalizeRepairStatus(repair.status || "Espera de confirmación"),
         paymentStatus: repair.paymentStatus || "No Pagada",
         reviewAmount: repair.reviewAmount || "0",
         reviewOnly: !!repair.reviewOnly,
@@ -980,11 +981,10 @@ export default function RepairForm() {
                         className="w-full h-10 text-xs sm:text-sm border border-gray-300 rounded-md px-3 bg-white cursor-pointer"
                       >
                         <option value="Espera de confirmación">Espera de confirmación</option>
-                        <option value="Diagnóstico">Diagnóstico</option>
+                        <option value="Taller">Taller</option>
                         <option value="En Proceso">En Proceso</option>
                         <option value="Entregada">Entregada</option>
                         <option value="Terminada">Terminada</option>
-                        <option value="No Entregada">No Entregada</option>
                         <option value="No autorizado">No autorizado</option>
                       </select>
                     </FormControl>

@@ -52,7 +52,7 @@ test("excludes duplicate repair reports including accents and whitespace", () =>
 test("excludes nonbillable repairs and includes repair-only clients", () => {
   for (const override of [
     { status: "No autorizado" }, { status: "Espera de confirmación" },
-    { status: "Diagnóstico" }, { paymentStatus: "Cotización" },
+    { status: "Diagnóstico" }, { status: "Taller" }, { paymentStatus: "Cotización" },
     { total: "0" }, { total: "-1" }, { paymentStatus: "Pagada" },
     { clientId: null },
   ]) {
