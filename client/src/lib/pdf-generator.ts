@@ -474,15 +474,26 @@ export async function generateRepairPDF(
   // Create a new PDF document
   const doc = new jsPDF();
 
-  // Calcular subtotal, IVA y total dinámicamente desde los items
-  const calculatedSubtotal = items.reduce((sum, item) => {
-    const quantity = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity;
-    const unitPrice = typeof item.unitPrice === 'string' ? parseFloat(item.unitPrice) : item.unitPrice;
-    return sum + ((quantity || 0) * (unitPrice || 0));
-  }, 0);
-
-  const calculatedIva = repair.includeIVA ? calculatedSubtotal * 0.16 : 0;
-  const calculatedTotal = calculatedSubtotal + calculatedIva;
+  // Totales autoritativos del encabezado; no recalcular desde conceptos ocultos.
+  const calculatedSubtotal = Number(repair.subtotal || 0);
+  const calculatedIva = Number(repair.iva || 0);
+  const calculatedTotal = Number(repair.total || 0);
+  const billedItems = repair.reviewOnly ? [] : items;
+  const repairRows = billedItems.map((item, index) => [
+    index + 1,
+    item.concept || "",
+    item.quantity.toString(),
+    item.unit || "",
+    formatCurrency(Number(item.unitPrice) || 0),
+    formatCurrency(Number(item.subtotal) || 0),
+  ]);
+  if (repair.reviewOnly || Number(repair.reviewAmount) > 0) {
+    repairRows.push([
+      repairRows.length + 1, "Revisión del equipo", "1", "servicio",
+      formatCurrency(Number(repair.reviewAmount || 0)),
+      formatCurrency(Number(repair.reviewAmount || 0)),
+    ]);
+  }
 
   // Agregar logo de Péza Maquinaria
   addPezaLogo(doc, 14, 10, 50, 15);
@@ -655,22 +666,7 @@ export async function generateRepairPDF(
     head: [
       ["#", "Concepto", "Cantidad", "Unidad", "Precio Unitario", "Subtotal"],
     ],
-    body: items.map((item, index) => [
-      index + 1,
-      item.concept || "",
-      item.quantity.toString(),
-      item.unit || "",
-      formatCurrency(
-        typeof item.unitPrice === "number"
-          ? item.unitPrice
-          : Number(item.unitPrice) || 0,
-      ),
-      formatCurrency(
-        typeof item.subtotal === "number"
-          ? item.subtotal
-          : Number(item.subtotal) || 0,
-      ),
-    ]),
+    body: repairRows,
     theme: "grid",
     styles: {
       fontSize: 9,

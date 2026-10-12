@@ -10,6 +10,7 @@ type RepairLike = {
   total?: string | number | null;
   status?: string | null;
   paymentStatus?: string | null;
+  reviewOnly?: boolean | null;
 };
 
 const EXCLUDED_REPAIR_STATUSES = new Set([
@@ -34,7 +35,7 @@ export function isRepairReport(report: ReportLike): boolean {
 
 export function isBillableRepair(repair: RepairLike): boolean {
   return (
-    !EXCLUDED_REPAIR_STATUSES.has(repair.status || "") &&
+    (repair.reviewOnly === true || !EXCLUDED_REPAIR_STATUSES.has(repair.status || "")) &&
     repair.paymentStatus !== "Cotización" &&
     money(repair.total) > 0.005
   );

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, memo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Repair } from "@shared/schema";
+import RepairReviewPayment from "@/components/RepairReviewPayment";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,7 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { Wrench, Plus, Package, Calendar, CheckCircle, Clock, Trash2, ChevronDown, Search, Eye, AlertCircle, Hourglass, Truck, XCircle, DollarSign, FileDown, CalendarCog, PackageX, ClipboardList, FileText, Settings2, ArrowUp, ArrowDown } from "lucide-react";
+import { Wrench, Plus, Package, Calendar, CheckCircle, Clock, Trash2, ChevronDown, Search, Eye, AlertCircle, Hourglass, Truck, XCircle, FileDown, CalendarCog, PackageX, ClipboardList, FileText, Settings2, ArrowUp, ArrowDown } from "lucide-react";
 
 const STATUS_OPTIONS = [
   { value: 'Espera de confirmación', label: 'Espera', icon: Hourglass, color: 'amber' },
@@ -54,6 +55,7 @@ const DEFAULT_TAB_ORDER = [
   'No Entregada',
   'Pagada',
   'No Pagada',
+  'Revisión',
   'No autorizado',
   'Diagnóstico',
   'Cotización',
@@ -151,6 +153,7 @@ export default function Repairs() {
   }, [repairs, debouncedSearch]);
 
   const PAYMENT_TABS = [
+    { value: 'Revisión', label: 'Revisión', icon: ClipboardList, bgActive: 'bg-amber-100', textActive: 'text-amber-700', border: 'border-amber-200', badgeBg: 'bg-amber-50' },
     { value: 'Pagada', label: 'Pagada', icon: CheckCircle, bgActive: 'bg-green-100', textActive: 'text-green-700', border: 'border-green-200', badgeBg: 'bg-green-50' },
     { value: 'No Pagada', label: 'No Pagada', icon: XCircle, bgActive: 'bg-red-100', textActive: 'text-red-700', border: 'border-red-200', badgeBg: 'bg-red-50' },
     { value: 'Cotización', label: 'Cotización', icon: FileText, bgActive: 'bg-blue-100', textActive: 'text-blue-700', border: 'border-blue-200', badgeBg: 'bg-blue-50' },
@@ -179,7 +182,7 @@ export default function Repairs() {
   }, [repairsByStatus, filteredRepairs]);
 
   const displayedRepairs = useMemo(() => {
-    if (activeTab === 'Pagada' || activeTab === 'No Pagada' || activeTab === 'Cotización') {
+    if (activeTab === 'Pagada' || activeTab === 'No Pagada' || activeTab === 'Cotización' || activeTab === 'Revisión') {
       return filteredRepairs.filter(r => (r as any).paymentStatus === activeTab);
     }
     if (activeTab !== 'all') {
@@ -651,19 +654,7 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
     });
   };
 
-  let finalTotal = 0;
-  
-  if (repair.items && repair.items.length > 0) {
-    const calculatedTotal = repair.items.reduce((sum, item) => {
-      const quantity = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity;
-      const unitPrice = typeof item.unitPrice === 'string' ? parseFloat(item.unitPrice) : item.unitPrice;
-      return sum + ((quantity || 0) * (unitPrice || 0));
-    }, 0);
-    const calculatedIva = repair.includeIVA ? calculatedTotal * 0.16 : 0;
-    finalTotal = calculatedTotal + calculatedIva;
-  } else {
-    finalTotal = typeof repair.total === 'number' ? repair.total : parseFloat(repair.total.toString());
-  }
+  const finalTotal = Number(repair.total || 0);
 
   const statusMutation = useMutation({
     mutationFn: async (newStatus: string) => {
@@ -712,32 +703,6 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
       statusMutation.mutate(newStatus);
     }
   };
-
-  const paymentStatusMutation = useMutation({
-    mutationFn: async (newPaymentStatus: string) => {
-      return apiRequest(`/api/repairs/${repair.id}/payment-status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ paymentStatus: newPaymentStatus }),
-      });
-    },
-    onSuccess: (_data: any, newPaymentStatus: string) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/repairs', repair.id] });
-      queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
-      toast({
-        title: "Estado actualizado",
-        description: `Pago marcado como "${newPaymentStatus}".`,
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error?.message || "No se pudo actualizar el estado de pago.",
-        variant: "destructive",
-      });
-    },
-  });
 
   const liquidatedDateMutation = useMutation({
     mutationFn: async (liquidatedAt: string) => apiRequest(`/api/repairs/${repair.id}/payment-status`, {
@@ -935,38 +900,7 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
             <FileDown className="w-3.5 h-3.5" />
             {isDownloadingPDF ? "Generando PDF..." : "Descargar PDF"}
           </button>
-          {/* Select nativo de pago — evita overlays de Radix que bloquean toques en Android */}
-          <div
-            className="flex items-center gap-2 text-gray-700"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <DollarSign className="w-4 h-4 text-gray-500 flex-shrink-0" />
-            <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Estado de Pago:</span>
-            <div className="ml-auto">
-              <select
-                value={(repair as any).paymentStatus || "No Pagada"}
-                onChange={(e) => {
-                  const newValue = e.target.value;
-                  if (newValue !== ((repair as any).paymentStatus || "No Pagada")) {
-                    paymentStatusMutation.mutate(newValue);
-                  }
-                }}
-                className={`h-7 text-xs font-medium border rounded-md px-2 min-w-[100px] cursor-pointer appearance-none bg-no-repeat bg-[length:12px] bg-[right_6px_center] ${
-                  (repair as any).paymentStatus === 'Pagada'
-                    ? 'bg-green-100 text-green-800 border-green-300'
-                    : (repair as any).paymentStatus === 'Cotización'
-                      ? 'bg-blue-100 text-blue-800 border-blue-300'
-                      : 'bg-red-100 text-red-800 border-red-300'
-                }`}
-                style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}
-                disabled={paymentStatusMutation.isPending}
-              >
-                <option value="No Pagada">No Pagada</option>
-                <option value="Pagada">Pagada</option>
-                <option value="Cotización">Cotización</option>
-              </select>
-            </div>
-          </div>
+          <RepairReviewPayment repair={repair} busy={liquidatedDateMutation.isPending} />
           {(repair as any).paymentStatus === "Pagada" && (
             <div
               className="rounded-md border border-green-100 bg-green-50/70 px-2.5 py-2 text-xs sm:text-sm"

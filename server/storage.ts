@@ -31,6 +31,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, like, ilike, or, sql, isNotNull, inArray } from "drizzle-orm";
 import { resolveLiquidatedAt } from "./repair-liquidation";
+import { calculateRepairReviewTotals, resolveRepairReview } from "@shared/repair-review";
 
 export class MissingQuotationSalespersonError extends Error {
   constructor() {
@@ -977,16 +978,16 @@ export const storage = {
           (sum, item) => sum + Math.round(Number(item.subtotal) * 100),
           0
         );
-        const ivaCents = repairData.includeIVA ? Math.round(subtotalCents * 0.16) : 0;
+        const review = resolveRepairReview(null, repairData);
+        const totals = calculateRepairReviewTotals(subtotalCents / 100, review.reviewAmount, review.reviewOnly, repairData.includeIVA ?? true);
 
         // Insertamos la reparación
         const [newRepair] = await tx.insert(repairs).values({
           ...repairData,
+          ...review,
+          ...totals,
           liquidatedAt: resolveLiquidatedAt(null, null, repairData.paymentStatus ?? "No Pagada"),
           clientId,
-          subtotal: (subtotalCents / 100).toFixed(2),
-          iva: (ivaCents / 100).toFixed(2),
-          total: ((subtotalCents + ivaCents) / 100).toFixed(2),
         }).returning();
         
         // Insertamos los items de la reparación
@@ -1070,19 +1071,19 @@ export const storage = {
         0
       );
       const includeIVA = repairData.includeIVA ?? existing.includeIVA;
-      const ivaCents = includeIVA ? Math.round(subtotalCents * 0.16) : 0;
+      const review = resolveRepairReview(existing, repairData);
+      const totals = calculateRepairReviewTotals(subtotalCents / 100, review.reviewAmount, review.reviewOnly, includeIVA);
 
       const [header] = await tx.update(repairs).set({
         ...repairData,
+        ...review,
+        ...totals,
         liquidatedAt: resolveLiquidatedAt(
           existing.paymentStatus, existing.liquidatedAt,
           repairData.paymentStatus ?? existing.paymentStatus,
         ),
         clientId,
         includeIVA,
-        subtotal: (subtotalCents / 100).toFixed(2),
-        iva: (ivaCents / 100).toFixed(2),
-        total: ((subtotalCents + ivaCents) / 100).toFixed(2),
         updatedAt: new Date(),
       }).where(eq(repairs.id, id)).returning();
 
@@ -1106,11 +1107,25 @@ export const storage = {
         if (!existingRepair) {
           return null;
         }
+
+        const review = resolveRepairReview(existingRepair, repairData);
+        let totals = {};
+        if (review.reviewAmount !== existingRepair.reviewAmount || review.reviewOnly !== existingRepair.reviewOnly) {
+          const lines = await tx.select({ subtotal: repairItems.subtotal })
+            .from(repairItems).where(eq(repairItems.repairId, id));
+          const itemCents = lines.reduce((sum, line) => sum + Math.round(Number(line.subtotal) * 100), 0);
+          totals = calculateRepairReviewTotals(
+            itemCents / 100, review.reviewAmount, review.reviewOnly,
+            repairData.includeIVA ?? existingRepair.includeIVA,
+          );
+        }
         
         // Actualizamos la reparación
         const [updatedRepair] = await tx.update(repairs)
           .set({
             ...repairData,
+            ...review,
+            ...totals,
             liquidatedAt: resolveLiquidatedAt(
               existingRepair.paymentStatus, existingRepair.liquidatedAt,
               repairData.paymentStatus ?? existingRepair.paymentStatus,

@@ -9,7 +9,8 @@ import { es } from "date-fns/locale";
 
 import { RepairFormData, repairFormSchema, RepairItemData, Concept, Client } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
-import { calculateIVA, calculateTotal } from "@/lib/utils";
+import { calculateRepairReviewTotals } from "@shared/repair-review";
+import { formatCurrency } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +64,7 @@ export default function RepairForm() {
   const [subtotal, setSubtotal] = useState(0);
   const [iva, setIva] = useState(0);
   const [total, setTotal] = useState(0);
+  const [totalsError, setTotalsError] = useState("");
   const [images, setImages] = useState<{ [key: number]: string | null }>({ 1: null, 2: null, 3: null });
   const [uploadingImages, setUploadingImages] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
   // Fotos quitadas/reemplazadas que se borrarán del almacenamiento solo tras guardar con éxito
@@ -91,12 +93,21 @@ export default function RepairForm() {
       elaborationDate: null,
       status: "Espera de confirmación",
       paymentStatus: "No Pagada",
+      reviewAmount: "0",
+      reviewOnly: false,
       reviewReason: "",
       clientReport: "",
       equipmentObservations: "",
       includeIVA: true,
     },
   });
+
+  const reviewAmount = form.watch("reviewAmount");
+  const reviewOnly = form.watch("reviewOnly");
+  const includeIVA = form.watch("includeIVA");
+  const initializedForId = useRef<number | null>(null);
+  const submitting = useRef(false);
+  const [isPreparingSave, setIsPreparingSave] = useState(false);
 
   // Obtener el siguiente número de reparación automáticamente
   const { data: nextNumberData } = useQuery({
@@ -198,6 +209,7 @@ export default function RepairForm() {
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/stats'] });
       toast({
         title: isEditMode ? "Reparación actualizada" : "Reparación creada",
         description: `La orden de reparación ha sido ${isEditMode ? 'actualizada' : 'creada'} correctamente.`,
@@ -213,34 +225,35 @@ export default function RepairForm() {
     },
   });
 
-  // Actualizar cálculos cuando cambien los items o el estado de includeIVA
+  // Actualizar cálculos con la misma regla monetaria que el servidor.
   useEffect(() => {
-    console.log(`Calculando subtotal para ${items.length} items:`, items);
     const newSubtotal = items.reduce((sum, item) => {
       const quantity = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity;
       const unitPrice = typeof item.unitPrice === 'string' ? parseFloat(item.unitPrice) : item.unitPrice;
       const itemTotal = (quantity || 0) * (unitPrice || 0);
-      console.log(`Item ${item.concept}: ${quantity} x ${unitPrice} = ${itemTotal}`);
       return sum + itemTotal;
     }, 0);
     
-    console.log(`Subtotal calculado: ${newSubtotal}`);
-    setSubtotal(newSubtotal);
-    
-    const includeIVA = form.getValues("includeIVA");
-    if (includeIVA) {
-      const newIva = calculateIVA(newSubtotal);
-      setIva(newIva);
-      setTotal(calculateTotal(newSubtotal));
-    } else {
-      setIva(0);
-      setTotal(newSubtotal);
+    try {
+      // Mantener texto al capturar; un separador decimal incompleto no debe
+      // hacer fallar la vista previa.
+      const previewFee = Number(reviewAmount || 0);
+      const totals = calculateRepairReviewTotals(newSubtotal,
+        Number.isFinite(previewFee) && previewFee >= 0 ? previewFee.toFixed(2) : "0",
+        !!reviewOnly, !!includeIVA);
+      setSubtotal(Number(totals.subtotal));
+      setIva(Number(totals.iva));
+      setTotal(Number(totals.total));
+      setTotalsError("");
+    } catch {
+      setTotalsError("El importe excede el límite permitido. Corrige los conceptos o el cargo de revisión.");
     }
-  }, [items, form]);
+  }, [items, reviewAmount, reviewOnly, includeIVA]);
 
   // Resetear formulario cuando se navega a crear nueva reparación
   useEffect(() => {
     if (!isEditMode) {
+      initializedForId.current = null;
       form.reset({
         clientName: "",
         clientEmail: "",
@@ -254,6 +267,9 @@ export default function RepairForm() {
         deliveryDate: null,
         departureDate: null,
         status: "Espera de confirmación",
+        paymentStatus: "No Pagada",
+        reviewAmount: "0",
+        reviewOnly: false,
         reviewReason: "",
         clientReport: "",
         equipmentObservations: "",
@@ -278,7 +294,8 @@ export default function RepairForm() {
 
   // Inicializar el formulario con los datos de la reparación si estamos en modo edición
   useEffect(() => {
-    if (repair) {
+    if (repair && initializedForId.current !== repairId) {
+      initializedForId.current = repairId;
       setRepairNumber(repair.repairNumber);
       setCustomFolio(repair.repairNumber);
       setItems(repair.items || []);
@@ -298,6 +315,8 @@ export default function RepairForm() {
         elaborationDate: repair.elaborationDate ? new Date(repair.elaborationDate) : null,
         status: repair.status || "Espera de confirmación",
         paymentStatus: repair.paymentStatus || "No Pagada",
+        reviewAmount: repair.reviewAmount || "0",
+        reviewOnly: !!repair.reviewOnly,
         reviewReason: repair.reviewReason || "",
         clientReport: repair.clientReport || "",
         equipmentObservations: repair.equipmentObservations || "",
@@ -315,7 +334,7 @@ export default function RepairForm() {
         });
       }
     }
-  }, [repair, isEditMode, form]);
+  }, [repair, repairId, isEditMode, form]);
 
   const handleImageChange = async (index: number, file: File) => {
     // Guardar la foto anterior para restaurarla si la subida falla
@@ -425,6 +444,7 @@ export default function RepairForm() {
   };
 
   const onSubmit = async (data: RepairFormData) => {
+    if (submitting.current || mutation.isPending) return;
     if (Object.values(uploadingImages).some(Boolean)) {
       toast({
         title: "Fotos subiendo",
@@ -432,7 +452,13 @@ export default function RepairForm() {
       });
       return;
     }
-    if (items.length === 0) {
+    const normalizedReviewAmount = String(data.reviewAmount || "0").trim().replace(",", ".");
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalizedReviewAmount) || !Number.isFinite(Number(normalizedReviewAmount)) ||
+      ((data.reviewOnly || data.paymentStatus === "Revisión") && Number(normalizedReviewAmount) <= 0)) {
+      form.setError("reviewAmount", { message: "Captura un importe válido con máximo dos decimales; para solo revisión debe ser mayor que cero." });
+      return;
+    }
+    if (!data.reviewOnly && items.length === 0) {
       toast({
         title: "Error",
         description: "Debe agregar al menos un ítem a la reparación",
@@ -441,9 +467,11 @@ export default function RepairForm() {
       return;
     }
 
+    submitting.current = true;
+    setIsPreparingSave(true);
     // Crear conceptos nuevos automáticamente
     try {
-      for (const item of items) {
+      for (const item of data.reviewOnly ? [] : items) {
         // Verificar si el concepto ya existe en la lista
         const conceptExists = concepts.some(
           concept => concept.name.toLowerCase() === item.concept.toLowerCase()
@@ -474,8 +502,22 @@ export default function RepairForm() {
 
     // Preparar los datos para enviar al servidor
     // Convertir valores numéricos a string para la API
+    let savedTotals;
+    try {
+      savedTotals = calculateRepairReviewTotals(
+        items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0),
+        normalizedReviewAmount, !!data.reviewOnly, data.includeIVA,
+      );
+    } catch {
+      submitting.current = false;
+      setIsPreparingSave(false);
+      toast({ title: "Importe inválido", description: "Corrige los conceptos o el cargo de revisión.", variant: "destructive" });
+      return;
+    }
     const repairData = {
       ...data,
+      reviewAmount: Number(normalizedReviewAmount).toFixed(2),
+      reviewOnly: !!data.reviewOnly,
       repairNumber: customFolio, // Usar el folio personalizado/editado
       image1: images[1] || null,
       image2: images[2] || null,
@@ -485,14 +527,19 @@ export default function RepairForm() {
         quantity: Number(item.quantity),
         unitPrice: Number(item.unitPrice)
       })),
-      subtotal: subtotal.toString(),
-      iva: iva.toString(),
-      total: total.toString(),
+      subtotal: savedTotals.subtotal,
+      iva: savedTotals.iva,
+      total: savedTotals.total,
       includeIVA: data.includeIVA,
     };
 
     console.log("Enviando datos de reparación:", repairData);
-    mutation.mutate(repairData);
+    mutation.mutate(repairData, {
+      onSettled: () => {
+        submitting.current = false;
+        setIsPreparingSave(false);
+      },
+    });
   };
 
   if (isEditMode && isLoading) {
@@ -955,12 +1002,16 @@ export default function RepairForm() {
                     <FormControl>
                       <select
                         value={field.value || "No Pagada"}
-                        onChange={(e) => field.onChange(e.target.value)}
+                        onChange={(e) => {
+                          field.onChange(e.target.value);
+                          if (e.target.value === "Revisión") form.setValue("reviewOnly", true, { shouldDirty: true });
+                        }}
                         className="w-full h-10 text-xs sm:text-sm border border-gray-300 rounded-md px-3 bg-white cursor-pointer"
                       >
                         <option value="No Pagada">No Pagada</option>
                         <option value="Pagada">Pagada</option>
                         <option value="Cotización">Cotización</option>
+                        <option value="Revisión">Revisión</option>
                       </select>
                     </FormControl>
                     <FormMessage className="text-xs" />
@@ -1044,7 +1095,38 @@ export default function RepairForm() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 sm:space-y-4">
-              <RepairItemsTable
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 sm:p-4 space-y-3">
+                <FormField control={form.control} name="reviewAmount" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cargo de revisión antes de IVA <span className="font-normal">(opcional para reparación)</span></FormLabel>
+                    <FormControl>
+                      <Input {...field} value={field.value ?? ""} type="text" inputMode="decimal" placeholder="0.00"
+                        onBlur={() => { if (!String(field.value ?? "").trim()) field.onChange("0"); field.onBlur(); }}
+                        onChange={e => field.onChange(e.target.value.replace(",", "."))} className="bg-white" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="reviewOnly" render={({ field }) => (
+                  <FormItem className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <FormControl>
+                        <Switch checked={!!field.value} onCheckedChange={checked => {
+                          if (!checked && field.value && !window.confirm("Se sumará el cargo de revisión guardado a los conceptos de reparación una sola vez. El estado cambiará a No Pagada. ¿Autorizar reparación?")) return;
+                          field.onChange(checked);
+                          form.setValue("paymentStatus", checked ? "Revisión" : "No Pagada", { shouldDirty: true });
+                        }} />
+                      </FormControl>
+                      <FormLabel className="font-medium">{field.value ? "Solo revisión" : "Revisión + reparación"}</FormLabel>
+                    </div>
+                    <p className="text-xs text-amber-900">
+                      {field.value ? "Se cobra solo la revisión. Los conceptos guardados se conservan ocultos hasta autorizar la reparación." : "Se cobran los conceptos más el importe de revisión, una sola vez."}
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              {!reviewOnly && <RepairItemsTable
                 items={items}
                 onAddItem={handleAddItem}
                 onRemoveItem={handleRemoveItem}
@@ -1054,7 +1136,14 @@ export default function RepairForm() {
                 subtotal={subtotal}
                 iva={iva}
                 total={total}
-              />
+              />}
+              <div className="ml-auto max-w-xs space-y-1 rounded-md border p-3 text-sm">
+                {Number(reviewAmount) > 0 && <div className="flex justify-between gap-3"><span>Revisión antes de IVA:</span><span>{formatCurrency(Number(reviewAmount))}</span></div>}
+                <div className="flex justify-between"><span>Subtotal:</span><span>{formatCurrency(subtotal)}</span></div>
+                <div className="flex justify-between"><span>IVA (16%):</span><span>{formatCurrency(iva)}</span></div>
+                <div className="flex justify-between border-t pt-1 font-bold"><span>Total:</span><span>{formatCurrency(total)}</span></div>
+              </div>
+              {totalsError && <p role="alert" className="text-sm text-red-700">{totalsError}</p>}
 
               <div className="flex items-center gap-2 mt-4">
                 <FormField
@@ -1087,12 +1176,11 @@ export default function RepairForm() {
             </button>
             <button 
               type="submit" 
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || isPreparingSave || !!totalsError}
               className="peza-button-primary w-full sm:w-auto text-sm sm:text-base"
             >
-              {mutation.isPending ? (
+              {mutation.isPending || isPreparingSave ? (
                 <>
-                  <span className="animate-spin mr-2">⟳</span>
                   Guardando...
                 </>
               ) : (

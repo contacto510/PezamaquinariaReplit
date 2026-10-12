@@ -34,6 +34,7 @@ import crypto from "crypto";
 import { summarizeAccountStatement } from "@shared/account-statement";
 import { buildAccountsReceivable } from "@shared/accounts-receivable";
 import { InvalidLiquidationDate, parseLiquidationDay } from "./repair-liquidation";
+import { InvalidRepairReview } from "@shared/repair-review";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -745,7 +746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Never fetch legacy image data for this summary.
           columns: {
             id: true, clientId: true, repairNumber: true, equipment: true,
-            receivedDate: true, total: true, status: true, paymentStatus: true,
+            receivedDate: true, total: true, status: true, paymentStatus: true, reviewOnly: true,
           },
           with: { client: { columns: { name: true } } },
         }),
@@ -1757,6 +1758,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         total: originalRepair.total,
         includeIVA: originalRepair.includeIVA,
         repairOrder: originalRepair.repairOrder,
+        reviewAmount: originalRepair.reviewAmount,
+        reviewOnly: originalRepair.reviewOnly,
       };
 
       // Create the duplicated items
@@ -1780,7 +1783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST - Create new repair
-  const validPaymentStatusesRepair = ["Pagada", "No Pagada", "Cotización"];
+  const validPaymentStatusesRepair = ["Pagada", "No Pagada", "Cotización", "Revisión"];
 
   app.post(`${apiPrefix}/repairs`, async (req, res) => {
     try {
@@ -1823,6 +1826,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? parsedForm.paymentStatus
           : "No Pagada",
         reviewReason: parsedForm.reviewReason || null,
+        reviewAmount: parsedForm.reviewAmount ?? "0.00",
+        reviewOnly: parsedForm.reviewOnly ?? false,
       };
 
       const repairItems = parsedItems.map(item => ({
@@ -1841,6 +1846,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(newRepair);
     } catch (error) {
       console.error("Error al crear reparación:", error);
+      if (error instanceof InvalidRepairReview) return res.status(400).json({ message: error.message });
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -1940,6 +1946,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? parsedForm.paymentStatus
           : (currentRepair as any).paymentStatus || "No Pagada",
         reviewReason: parsedForm.reviewReason !== undefined ? parsedForm.reviewReason : currentRepair.reviewReason,
+        ...(formData.reviewAmount !== undefined ? { reviewAmount: parsedForm.reviewAmount } : {}),
+        ...(formData.reviewOnly !== undefined ? { reviewOnly: parsedForm.reviewOnly } : {}),
       };
 
       const replacementItems = parsedItems.map(item => ({
@@ -1961,6 +1969,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json(updatedRepair);
     } catch (error) {
       console.error(`Error al actualizar reparación con ID ${req.params.id}:`, error);
+      if (error instanceof InvalidRepairReview) return res.status(400).json({ message: error.message });
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -2045,7 +2054,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { paymentStatus } = req.body;
-      const validPaymentStatuses = ["Pagada", "No Pagada", "Cotización"];
+      const validPaymentStatuses = ["Pagada", "No Pagada", "Cotización", "Revisión"];
       
       if (!paymentStatus || !validPaymentStatuses.includes(paymentStatus)) {
         return res.status(400).json({ message: "Estado de pago inválido" });
@@ -2060,9 +2069,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const explicitDate = Object.prototype.hasOwnProperty.call(req.body, "liquidatedAt")
         ? parseLiquidationDay(req.body.liquidatedAt)
         : undefined;
+      const reviewPatch = repairFormSchema.pick({ reviewAmount: true, reviewOnly: true }).parse(req.body);
       
       const repair = await storage.updateRepair(id, { 
         paymentStatus, 
+        ...reviewPatch,
         ...(explicitDate !== undefined ? { liquidatedAt: explicitDate } : {}),
         updatedAt: new Date() 
       });
@@ -2074,9 +2085,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json(repair);
     } catch (error) {
       console.error(`Error al actualizar estado de pago de reparación con ID ${req.params.id}:`, error);
-      if (error instanceof InvalidLiquidationDate) {
+      if (error instanceof InvalidLiquidationDate || error instanceof InvalidRepairReview) {
         return res.status(400).json({ message: error.message });
       }
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Monto o modalidad de revisión inválidos", errors: error.errors });
       res.status(500).json({ message: "Error interno del servidor" });
     }
   });

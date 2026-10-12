@@ -1,9 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Repair, RepairItem } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
-import { formatCurrency, calculateIVA, calculateTotal } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { Camera } from "lucide-react";
 import { RepairLiquidationDate } from "@/components/RepairLiquidationDate";
 
@@ -140,27 +140,10 @@ export default function RepairDetail() {
     }
   };
 
-  // Calcular subtotal, IVA y total dinámicamente desde los items
-  const { calculatedSubtotal, calculatedIva, calculatedTotal } = useMemo(() => {
-    if (!repair || !repair.items) {
-      return { calculatedSubtotal: 0, calculatedIva: 0, calculatedTotal: 0 };
-    }
-
-    const subtotal = repair.items.reduce((sum, item) => {
-      const quantity = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity;
-      const unitPrice = typeof item.unitPrice === 'string' ? parseFloat(item.unitPrice) : item.unitPrice;
-      return sum + ((quantity || 0) * (unitPrice || 0));
-    }, 0);
-
-    const iva = repair.includeIVA ? calculateIVA(subtotal) : 0;
-    const total = subtotal + iva;
-
-    return {
-      calculatedSubtotal: subtotal,
-      calculatedIva: iva,
-      calculatedTotal: total,
-    };
-  }, [repair]);
+  // El encabezado guardado es la fuente autoritativa de importes.
+  const calculatedSubtotal = Number(repair?.subtotal || 0);
+  const calculatedIva = Number(repair?.iva || 0);
+  const calculatedTotal = Number(repair?.total || 0);
 
   if (isLoading) {
     return (
@@ -402,6 +385,11 @@ export default function RepairDetail() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-lg">Conceptos de la Reparación</CardTitle>
+          {(repair.reviewOnly || Number(repair.reviewAmount) > 0) && (
+            <p className="text-sm text-muted-foreground">
+              {repair.reviewOnly ? "Solo revisión. Los conceptos se conservan sin cobrarse hasta autorizar la reparación." : "Revisión + reparación. El cargo de revisión se incluye una sola vez."}
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <Table>
@@ -416,7 +404,7 @@ export default function RepairDetail() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {repair.items && repair.items.map((item: RepairItem, index: number) => (
+              {!repair.reviewOnly && repair.items && repair.items.map((item: RepairItem, index: number) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{index + 1}</TableCell>
                   <TableCell>{item.concept}</TableCell>
@@ -426,6 +414,16 @@ export default function RepairDetail() {
                   <TableCell className="text-right">{formatCurrency(parseFloat(item.subtotal.toString()))}</TableCell>
                 </TableRow>
               ))}
+              {(repair.reviewOnly || Number(repair.reviewAmount) > 0) && (
+                <TableRow>
+                  <TableCell className="font-medium">{repair.reviewOnly ? 1 : (repair.items?.length || 0) + 1}</TableCell>
+                  <TableCell>Revisión del equipo</TableCell>
+                  <TableCell className="text-right">1</TableCell>
+                  <TableCell className="text-right">servicio</TableCell>
+                  <TableCell className="text-right">{formatCurrency(Number(repair.reviewAmount || 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(Number(repair.reviewAmount || 0))}</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
 

@@ -68,6 +68,8 @@ export const repairs = pgTable("repairs", {
   paymentStatus: text("payment_status").default("No Pagada").notNull(), // Pagada, No Pagada, Cotización
   liquidatedAt: timestamp("liquidated_at"), // Fecha de liquidación, nullable para reparaciones históricas
   reviewReason: text("review_reason"), // Razón de revisión - información interna, no se muestra en PDF
+  reviewAmount: numeric("review_amount", { precision: 10, scale: 2 }).default("0").notNull(),
+  reviewOnly: boolean("review_only").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -247,6 +249,11 @@ export const repairFormSchema = z.object({
   status: z.string().default("Espera de confirmación"),
   paymentStatus: z.string().default("No Pagada"),
   reviewReason: z.string().optional(),
+  reviewAmount: z.union([z.string(), z.number()])
+    .refine(value => /^\d+(?:\.\d{1,2})?$/.test(String(value)) && Number(value) <= 99999999.99,
+      "Monto de revisión inválido; máximo dos decimales")
+    .transform(value => Number(value).toFixed(2)).optional(),
+  reviewOnly: z.boolean().optional(),
 });
 
 // Esquema para los items de reparación
