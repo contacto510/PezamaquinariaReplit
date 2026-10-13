@@ -25,3 +25,9 @@ En las facturas pendientes del resumen, priorizar la identificación de la obra 
 **Why:** El usuario confirmó que esta identificación resulta más útil para reconocer qué se está cobrando; el período sigue aportando el contexto temporal.
 
 **How to apply:** Conservar esa prioridad al modificar el formato del resumen, sin alterar folios ni cálculos.
+
+En Clientes → Actividad del Cliente → Estado de cuenta, mostrar las rentas agrupadas por proyecto y las reparaciones en un apartado separado, nunca mezcladas en el detalle.
+
+**Why:** El usuario necesita distinguir claramente las rentas y las reparaciones de cada cliente.
+
+**How to apply:** Usar folios R-XX para el apartado de reparaciones y excluir de rentas los reportes duplicados identificados como REPARACION. Esta separación visual no autoriza cambios a las reglas de saldo.

@@ -86,6 +86,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import ClientRepairsSection from "@/components/ClientRepairsSection";
+import { isRepairReport } from "@shared/account-statement";
 
 const getPaymentStatusBadge = (status: string) => {
   switch (status) {
@@ -169,7 +171,7 @@ export default function ClientDetail() {
   // Memoización de reportes agrupados por proyecto para evitar recálculos innecesarios
   const reportsByProject = useMemo(() => {
     if (!client?.reports) return {};
-    const grouped = (client.reports as Report[]).reduce((acc: Record<string, Report[]>, report: Report) => {
+    const grouped = (client.reports as Report[]).filter(report => !isRepairReport(report)).reduce((acc: Record<string, Report[]>, report: Report) => {
       const projectName = report.nombreObra || 'Sin Proyecto';
       if (!acc[projectName]) acc[projectName] = [];
       acc[projectName].push(report);
@@ -2138,7 +2140,7 @@ export default function ClientDetail() {
                 <div className="space-y-4">
                   <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                     <FileBarChart className="w-5 h-5 text-yellow-600" />
-                    Detalle de Reportes por Proyecto
+                    Rentas por proyecto
                   </h4>
                   
                   {Object.keys(reportsByProject).length > 0 ? (
@@ -2298,14 +2300,15 @@ export default function ClientDetail() {
                     <div className="text-center py-8">
                       <FileBarChart className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                       <h3 className="text-lg font-semibold text-gray-600 mb-2">
-                        No hay reportes disponibles
+                        No hay rentas disponibles
                       </h3>
                       <p className="text-gray-500">
-                        Este cliente aún no tiene reportes facturados registrados.
+                        Este cliente aún no tiene reportes de renta registrados.
                       </p>
                     </div>
                   )}
                 </div>
+                <ClientRepairsSection clientId={id} />
               </div>
             </CardContent>
           </TabsContent>
