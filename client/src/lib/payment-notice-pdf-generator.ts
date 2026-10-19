@@ -5,6 +5,7 @@ import { formatCurrency, savePDFMobile } from "./utils";
 import { addSocialIconsToPDF } from "./pdf-social-icons";
 import { addPezaLogo } from "./logo-base64";
 import { authenticatedFetch } from "./queryClient";
+import { getStatementPaymentDetail } from "./statement-payment-detail";
 import {
   getRepairAccountAmounts,
   getReportAccountAmounts,
@@ -29,6 +30,7 @@ interface ProcessedReport {
   abono: number;
   saldo: number;
   liquidadoEl: string;
+  paymentDetail: ReturnType<typeof getStatementPaymentDetail>;
 }
 
 /**
@@ -38,6 +40,7 @@ interface ProcessedReport {
 function processReport(report: Report): ProcessedReport {
   const { total: importe, paid: abono, pending: saldo } =
     getReportAccountAmounts(report);
+  const paymentDetail = getStatementPaymentDetail(report.payments, abono);
 
   // Período de Renta: misma lógica que el PDF individual del reporte.
   // 1) rango de fechas del reporte; 2) campo periodoRenta del primer concepto; 3) "Por definir"
@@ -79,6 +82,7 @@ function processReport(report: Report): ProcessedReport {
     abono,
     saldo,
     liquidadoEl: reportLiquidationDate(report),
+    paymentDetail,
   };
 }
 
@@ -90,6 +94,7 @@ function processReport(report: Report): ProcessedReport {
 function processRepair(repair: any): ProcessedReport {
   const { total: importe, paid: abono, pending: saldo } =
     getRepairAccountAmounts(repair);
+  const paymentDetail = getStatementPaymentDetail(undefined, abono);
 
   // Se formatea en UTC porque la fecha se guarda como fecha "de negocio"
   // (medianoche UTC); convertir a hora local de México la recorrería un día.
@@ -115,6 +120,7 @@ function processRepair(repair: any): ProcessedReport {
     abono,
     saldo,
     liquidadoEl: repairLiquidationDate(repair.liquidatedAt),
+    paymentDetail,
   };
 }
 
@@ -237,7 +243,7 @@ export async function generatePaymentNoticePDF(
           "OBRA",
           "PERÍODO RENTADO",
           "IMPORTE FACTURADO",
-          "ABONO RECIBIDO",
+          "ABONOS / FECHAS",
           "SALDO PENDIENTE",
         ]],
         body: pendientes.map((r) => [
@@ -245,7 +251,7 @@ export async function generatePaymentNoticePDF(
           r.obra,
           r.periodo,
           formatCurrency(r.importe),
-          formatCurrency(r.abono),
+          r.paymentDetail.tableText,
           formatCurrency(r.saldo),
         ]),
         foot: [[
@@ -274,15 +280,16 @@ export async function generatePaymentNoticePDF(
           halign: "center",
         },
         columnStyles: {
-          0: { cellWidth: 22, fontStyle: "bold" },
-          1: { cellWidth: 24, halign: "left", overflow: "linebreak" },
-          2: { cellWidth: 42 },
-          3: { cellWidth: 30, halign: "right" },
-          4: { cellWidth: 28, halign: "right" },
-          5: { cellWidth: 36, halign: "right", fontStyle: "bold", textColor: RED },
+          0: { cellWidth: 18, fontStyle: "bold" },
+          1: { cellWidth: 27, halign: "left", overflow: "linebreak" },
+          2: { cellWidth: 36 },
+          3: { cellWidth: 27, halign: "right" },
+          4: { cellWidth: 42, halign: "left", overflow: "linebreak", valign: "top" },
+          5: { cellWidth: 32, halign: "right", fontStyle: "bold", textColor: RED },
         },
         margin: { top: 20, left: marginLeft, right: marginRight, bottom: 36 },
         showHead: "everyPage",
+        rowPageBreak: "avoid",
         styles: { lineColor: [220, 220, 220], lineWidth: 0.1 },
         didParseCell: (data) => {
           // Resaltar columna de saldo pendiente en el cuerpo
@@ -300,49 +307,48 @@ export async function generatePaymentNoticePDF(
 
       // NOTAS DE ABONOS PARCIALES (automáticas)
       if (parciales.length > 0) {
-        // Pre-calcular las líneas envueltas reales para medir la altura exacta
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        const wrappedNotes = parciales.map((r) => {
-          const line = `La factura ${r.folio} (${r.fecha}) por ${formatCurrency(r.importe)} recibió un abono de ${formatCurrency(r.abono)}. Saldo restante: ${formatCurrency(r.saldo)}.`;
-          return doc.splitTextToSize(line, contentRight - marginLeft - 10) as string[];
-        });
-        const totalNoteLines = wrappedNotes.reduce((sum, w) => sum + w.length, 0);
-        // título (10) + líneas (4 c/u + 1 de separación) + padding inferior (5)
-        const noteHeight = 10 + totalNoteLines * 4 + parciales.length * 1 + 5;
-
-        // Límite seguro respecto al pie de página
-        const safeBottom = doc.internal.pageSize.height - 34;
-        if (cursorY + noteHeight > safeBottom) {
-          doc.addPage();
-          cursorY = 20;
-        }
-
-        doc.setFillColor(255, 248, 225);
-        doc.roundedRect(
-          marginLeft,
-          cursorY,
-          contentRight - marginLeft,
-          noteHeight,
-          2,
-          2,
-          "F"
-        );
-
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.text("NOTA SOBRE ABONOS PARCIALES", marginLeft + 5, cursorY + 6);
-
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        let noteLineY = cursorY + 12;
-        wrappedNotes.forEach((wrapped) => {
-          doc.text(wrapped, marginLeft + 5, noteLineY);
-          noteLineY += wrapped.length * 4 + 1;
+        const noteRows: string[][] = [];
+        parciales.forEach((r) => {
+          noteRows.push([
+            `Factura ${r.folio} (${r.fecha}) — importe: ${formatCurrency(r.importe)}.`,
+          ]);
+          const paymentLines = r.paymentDetail.noteText
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+          paymentLines.forEach((line) => noteRows.push([line]));
+          noteRows.push([`Saldo restante: ${formatCurrency(r.saldo)}.`]);
+          noteRows.push([""]);
         });
 
-        cursorY = cursorY + noteHeight + 10;
+        autoTable(doc, {
+          startY: cursorY,
+          head: [["NOTA SOBRE ABONOS PARCIALES"]],
+          body: noteRows,
+          theme: "grid",
+          headStyles: {
+            fillColor: PEZA_YELLOW,
+            textColor: [0, 0, 0],
+            fontSize: 9,
+            fontStyle: "bold",
+            halign: "left",
+          },
+          bodyStyles: {
+            fillColor: [255, 248, 225],
+            textColor: [0, 0, 0],
+            fontSize: 8,
+            halign: "left",
+            valign: "top",
+            cellPadding: 2,
+          },
+          columnStyles: {
+            0: { cellWidth: contentRight - marginLeft, overflow: "linebreak" },
+          },
+          margin: { top: 20, left: marginLeft, right: marginRight, bottom: 36 },
+          showHead: "everyPage",
+          styles: { lineColor: [235, 218, 170], lineWidth: 0.1 },
+        });
+        cursorY = (doc as any).lastAutoTable.finalY + 10;
       }
     } else {
       // Cliente al corriente
