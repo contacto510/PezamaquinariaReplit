@@ -1,0 +1,14 @@
+- [Report paid-amount rule](report-payment-paid-logic.md) — paymentStatus==='pagado' => 100% paid override; else use paymentSummary.totalPaid; saldo=max(0,total-abono).
+- [Vínculo cliente-cotización](client-linking.md) — clients.email es UNIQUE; usar NULL (no "" ni "N/A") para clientes sin correo; vincular por clientId > email real > nombre normalizado.
+- [Vendedor de cotizaciones](quotation-salesperson.md) — registro obligatorio interno, nunca en PDF; no inferir nombres históricos faltantes.
+- [Borrado de fotos de reparación](repair-image-deletion.md) — duplicados comparten URLs; verificar referencias en BD y prefijo public/repairs/ antes de borrar del storage.
+- [Object storage bucket config](object-storage-bucket.md) — Client needs explicit bucketId from DEFAULT_OBJECT_STORAGE_BUCKET_ID; repair photos use relative /public/repairs/ URLs served by the server.
+- [Dev vs prod database](dev-vs-prod-database.md) — dev DATABASE_URL is a stale copy; query NEON_DATABASE_URL (read-only) for real data facts.
+- [Estado de cuenta y reparaciones](estado-cuenta-reparaciones.md) — usar solo folios R-XX; período de reparación = recepción–entrega, o recepción–En proceso.
+- [PDFs e inputs numéricos en móvil](mobile-pdf-and-numeric-inputs.md) — iOS requiere abrir la pestaña durante el toque; conservar texto numérico hasta blur evita perder decimales.
+- [Abonos parciales distribuidos](partial-payment-allocation.md) — aplicar a saldos de reportes, no a conceptos; repartir por antigüedad o manualmente y guardar todo de forma atómica.
+- [Ediciones parciales seguras](safe-partial-edits.md) — omitir un campo conserva su valor; encabezado, conceptos y totales deben confirmarse o revertirse juntos.
+- [Sesión y publicaciones](auth-session-and-deploys.md) — la cookie del servidor manda; todo 401 debe sacar de la app y una pestaña antigua debe recuperarse tras publicar.
+- [Fechas de liquidación](liquidation-dates.md) — mostrar el registro que completó el saldo; no inferir fechas de otras ediciones ni rellenar reparaciones antiguas sin evidencia.
+- [Cobro de revisión](repair-review-billing.md) — solo revisión cobra únicamente ese importe; al autorizar reparación se suma una sola vez a los conceptos.
+- [Taller en reparaciones](repair-workshop.md) — reunir Diagnóstico y No Entregada sin borrar órdenes ni reescribir estados antes de publicar.
