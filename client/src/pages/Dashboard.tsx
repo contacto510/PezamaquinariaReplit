@@ -31,6 +31,7 @@ import { formatCurrency } from '@/lib/utils';
 import type { Quotation, Client, ClientProject } from '@shared/schema';
 import type { AccountsReceivableResponse } from '@/types/accounts-receivable';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
+import RepairDashboardSummary from '@/components/repair-dashboard/RepairDashboardSummary';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -282,6 +283,7 @@ export default function Dashboard() {
 
         {/* Tab: Resumen */}
         <TabsContent value="overview">
+          <RepairDashboardSummary />
           {isLoading ? (
             <div className="text-center py-10">
               <p>Cargando datos...</p>

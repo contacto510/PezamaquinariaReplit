@@ -34,6 +34,7 @@ import crypto from "crypto";
 import { normalizeRepairStatus } from "@shared/repair-status";
 import { summarizeAccountStatement } from "@shared/account-statement";
 import { buildAccountsReceivable } from "@shared/accounts-receivable";
+import { buildRepairDashboardSnapshot } from "@shared/repair-dashboard";
 import { InvalidLiquidationDate, parseLiquidationDay } from "./repair-liquidation";
 import { InvalidRepairReview } from "@shared/repair-review";
 
@@ -1614,6 +1615,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // API para reparaciones
+
+  // A complete, lightweight snapshot: no list pagination, photos, or item payloads.
+  // Read-only and protected independently from the older repair endpoints.
+  app.get(`${apiPrefix}/repairs-dashboard`, requireAuth, async (_req, res) => {
+    try {
+      const allRepairs = await db.query.repairs.findMany({
+        columns: {
+          id: true, repairNumber: true, clientId: true, equipment: true,
+          repairManager: true, status: true, paymentStatus: true, total: true,
+          reviewOnly: true, reviewAmount: true, includeIVA: true,
+          receivedDate: true, deliveryDate: true, liquidatedAt: true,
+        },
+        with: { client: { columns: { name: true } } },
+        orderBy: desc(repairsTable.id),
+      });
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.json(buildRepairDashboardSnapshot(allRepairs));
+    } catch (error) {
+      console.error("Error al obtener el resumen de reparaciones:", error);
+      return res.status(500).json({ message: "No se pudo obtener el resumen de reparaciones" });
+    }
+  });
   
   // GET - Next repair number
   app.get(`${apiPrefix}/repairs/next-number`, async (req, res) => {

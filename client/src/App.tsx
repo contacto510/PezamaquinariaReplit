@@ -19,6 +19,7 @@ const Concepts = lazy(() => import("@/pages/Concepts"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const AccountsReceivable = lazy(() => import("@/pages/AccountsReceivable"));
 const Repairs = lazy(() => import("@/pages/Repairs"));
+const RepairDashboard = lazy(() => import("@/pages/RepairDashboard"));
 const RepairForm = lazy(() => import("@/pages/RepairForm"));
 const RepairDetail = lazy(() => import("@/pages/RepairDetail"));
 const RepairConcepts = lazy(() => import("@/pages/RepairConcepts"));
@@ -438,6 +439,11 @@ function Router() {
       )} />
 
       {/* Rutas para reparaciones */}
+      <Route path="/repairs/dashboard" component={() => (
+        <Layout>
+          <RepairDashboard />
+        </Layout>
+      )} />
       <Route path="/repairs" component={() => (
         <Layout>
           <Repairs />

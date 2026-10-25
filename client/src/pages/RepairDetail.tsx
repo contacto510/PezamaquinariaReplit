@@ -58,6 +58,7 @@ export default function RepairDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
@@ -84,6 +85,7 @@ export default function RepairDetail() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({

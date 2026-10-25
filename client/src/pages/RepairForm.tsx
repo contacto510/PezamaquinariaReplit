@@ -208,6 +208,7 @@ export default function RepairForm() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       queryClient.invalidateQueries({ queryKey: ['/api/stats'] });

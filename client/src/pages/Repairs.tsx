@@ -260,6 +260,14 @@ export default function Repairs() {
             Conceptos
           </button>
         </Link>
+        <Link href="/repairs/dashboard" className={`px-3 sm:px-6 py-2 sm:py-2.5 rounded-md font-medium transition-all whitespace-nowrap text-sm sm:text-base min-h-[44px] ${
+          location.toString().includes("/repairs/dashboard")
+            ? "bg-gradient-to-r from-yellow-400 to-yellow-500 text-black shadow-md"
+            : "text-gray-600 hover:bg-gray-100"
+        }`}>
+          <ClipboardList className="w-4 h-4 inline-block mr-1 sm:mr-2" />
+          Resumen
+        </Link>
       </div>
 
       {/* Buscador */}
@@ -623,6 +631,7 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
         ) : old
       );
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
         title: "Fechas actualizadas",
@@ -641,6 +650,7 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs-dashboard'] });
     },
   });
 
@@ -674,6 +684,7 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       toast({
@@ -710,6 +721,7 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
       setIsCapturingLiquidatedDate(false);
       setLiquidatedDateInput("");
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/repairs', repair.id] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
@@ -783,6 +795,7 @@ const RepairCard = memo(function RepairCard({ repair }: RepairCardProps) {
       });
       setShowDeleteDialog(false);
       queryClient.invalidateQueries({ queryKey: ['/api/repairs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/repairs-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts-receivable'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
     },

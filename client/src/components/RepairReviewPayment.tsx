@@ -26,7 +26,7 @@ export default function RepairReviewPayment({ repair, busy = false }: { repair: 
     onSuccess: (updated: Repair) => {
       queryClient.setQueryData<Repair[]>(["/api/repairs"], old => old?.map(r => r.id === repair.id ? { ...r, ...updated } : r));
       queryClient.setQueryData(["/api/repairs", repair.id], updated);
-      for (const key of ["/api/repairs", "/api/clients", "/api/accounts-receivable", "/api/stats"]) {
+      for (const key of ["/api/repairs", "/api/repairs-dashboard", "/api/clients", "/api/accounts-receivable", "/api/stats"]) {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
       setDialog(null);
