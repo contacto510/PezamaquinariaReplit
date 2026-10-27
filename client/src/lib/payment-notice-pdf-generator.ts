@@ -6,6 +6,7 @@ import { addSocialIconsToPDF } from "./pdf-social-icons";
 import { addPezaLogo } from "./logo-base64";
 import { authenticatedFetch } from "./queryClient";
 import { getStatementPaymentDetail } from "./statement-payment-detail";
+import { statementPaymentGroupRows } from "./statement-payment-groups";
 import {
   getRepairAccountAmounts,
   getReportAccountAmounts,
@@ -31,6 +32,32 @@ interface ProcessedReport {
   saldo: number;
   liquidadoEl: string;
   paymentDetail: ReturnType<typeof getStatementPaymentDetail>;
+}
+
+function appendPaymentNotes(
+  doc: jsPDF, cursorY: number, title: string, rows: string[][],
+  marginLeft: number, marginRight: number, contentRight: number,
+): number {
+  autoTable(doc, {
+    startY: cursorY,
+    head: [[title]],
+    body: rows,
+    theme: "grid",
+    headStyles: {
+      fillColor: PEZA_YELLOW, textColor: [0, 0, 0], fontSize: 9,
+      fontStyle: "bold", halign: "left",
+    },
+    bodyStyles: {
+      fillColor: [255, 248, 225], textColor: [0, 0, 0], fontSize: 8,
+      halign: "left", valign: "top", cellPadding: 2,
+    },
+    columnStyles: { 0: { cellWidth: contentRight - marginLeft, overflow: "linebreak" } },
+    margin: { top: 20, left: marginLeft, right: marginRight, bottom: 36 },
+    showHead: "everyPage",
+    rowPageBreak: "avoid",
+    styles: { lineColor: [235, 218, 170], lineWidth: 0.1 },
+  });
+  return (doc as any).lastAutoTable.finalY + 10;
 }
 
 /**
@@ -204,7 +231,10 @@ export async function generatePaymentNoticePDF(
     ];
     const pendientes = processed.filter((r) => r.saldo > 0.005);
     const liquidados = processed.filter((r) => r.saldo <= 0.005);
-    const parciales = pendientes.filter((r) => r.abono > 0.005);
+    // A liquidation changes the balance, not the visibility of its history.
+    const conHistorial = processed.filter((r) => r.abono > 0.005 &&
+      (r.saldo > 0.005 || r.paymentDetail.paymentLines.length > 0));
+    const globalPaymentRows = statementPaymentGroupRows(reports);
     const totalPendiente = pendientes.reduce((sum, r) => sum + r.saldo, 0);
 
     // CAJA: TOTAL PENDIENTE DE PAGO
@@ -305,51 +335,6 @@ export async function generatePaymentNoticePDF(
 
       cursorY = (doc as any).lastAutoTable.finalY + 10;
 
-      // NOTAS DE ABONOS PARCIALES (automáticas)
-      if (parciales.length > 0) {
-        const noteRows: string[][] = [];
-        parciales.forEach((r) => {
-          noteRows.push([
-            `Factura ${r.folio} (${r.fecha}) — importe: ${formatCurrency(r.importe)}.`,
-          ]);
-          const paymentLines = r.paymentDetail.noteText
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean);
-          paymentLines.forEach((line) => noteRows.push([line]));
-          noteRows.push([`Saldo restante: ${formatCurrency(r.saldo)}.`]);
-          noteRows.push([""]);
-        });
-
-        autoTable(doc, {
-          startY: cursorY,
-          head: [["NOTA SOBRE ABONOS PARCIALES"]],
-          body: noteRows,
-          theme: "grid",
-          headStyles: {
-            fillColor: PEZA_YELLOW,
-            textColor: [0, 0, 0],
-            fontSize: 9,
-            fontStyle: "bold",
-            halign: "left",
-          },
-          bodyStyles: {
-            fillColor: [255, 248, 225],
-            textColor: [0, 0, 0],
-            fontSize: 8,
-            halign: "left",
-            valign: "top",
-            cellPadding: 2,
-          },
-          columnStyles: {
-            0: { cellWidth: contentRight - marginLeft, overflow: "linebreak" },
-          },
-          margin: { top: 20, left: marginLeft, right: marginRight, bottom: 36 },
-          showHead: "everyPage",
-          styles: { lineColor: [235, 218, 170], lineWidth: 0.1 },
-        });
-        cursorY = (doc as any).lastAutoTable.finalY + 10;
-      }
     } else {
       // Cliente al corriente
       doc.setFillColor(...LIGHT_GRAY);
@@ -364,6 +349,43 @@ export async function generatePaymentNoticePDF(
         { align: "center" }
       );
       cursorY += 28;
+    }
+
+    // These sections also render when every invoice has been paid.
+    if (conHistorial.length > 0) {
+      const noteRows: string[][] = [
+        ["Historial de abonos de folios pendientes y liquidados. Liquidar un folio no elimina su desglose."],
+      ];
+      conHistorial.forEach((r) => {
+        const lines = [
+          `Factura ${r.folio} (${r.fecha}) — importe: ${formatCurrency(r.importe)} — ${r.saldo > 0.005 ? "CON SALDO PENDIENTE" : "LIQUIDADA"}.`,
+        ];
+        if (r.paymentDetail.paymentLines.length > 0) {
+          lines.push("Abonos registrados:", ...r.paymentDetail.paymentLines,
+            `Total abonado: ${formatCurrency(r.abono)}.`);
+          if (r.paymentDetail.noteText.includes("no coincide")) {
+            lines.push("El desglose registrado no coincide con el total abonado.");
+          }
+        } else {
+          lines.push(r.paymentDetail.noteText);
+        }
+        lines.push(`Saldo restante: ${formatCurrency(r.saldo)}.`);
+        // Keep the folio and its payments together whenever the block fits
+        // on a page; exceptionally long histories still split across pages.
+        noteRows.push([lines.join("\n")]);
+      });
+      noteRows.push(["Los movimientos sin identificador de pago global se muestran individualmente; no se presupone que correspondan a un mismo pago."]);
+      cursorY = appendPaymentNotes(doc, cursorY, "NOTA SOBRE ABONOS PARCIALES",
+        noteRows, marginLeft, marginRight, contentRight);
+    }
+
+    if (globalPaymentRows.length > 0) {
+      cursorY = appendPaymentNotes(doc, cursorY,
+        "PAGOS GLOBALES — DISTRIBUCIÓN POR FOLIO", [
+          ["Referencia de las aplicaciones registradas de cada pago global. Estos importes ya están incluidos en los abonos de cada folio; no se suman nuevamente al saldo."],
+          ...globalPaymentRows,
+          ["El total aplicado corresponde a los movimientos que permanecen registrados. Si se editó o eliminó una aplicación, no representa necesariamente el importe original recibido."],
+        ], marginLeft, marginRight, contentRight);
     }
 
     // SECCIÓN: REFERENCIA - FACTURAS YA LIQUIDADAS
@@ -390,7 +412,7 @@ export async function generatePaymentNoticePDF(
 
       autoTable(doc, {
         startY: cursorY + 9,
-        head: [["FOLIO", "OBRA", "PERÍODO", "IMPORTE", "ESTADO", "LIQUIDADO EL"]],
+        head: [["FOLIO", "OBRA", "PERÍODO", "IMPORTE", "ESTADO", "LIQUIDADO EL", "ABONOS / FECHAS"]],
         body: liquidados.map((r) => [
           r.folio,
           r.obra,
@@ -398,6 +420,7 @@ export async function generatePaymentNoticePDF(
           formatCurrency(r.importe),
           "PAGADO",
           r.liquidadoEl,
+          r.paymentDetail.tableText,
         ]),
         theme: "striped",
         headStyles: {
@@ -414,15 +437,17 @@ export async function generatePaymentNoticePDF(
         },
         alternateRowStyles: { fillColor: LIGHT_GRAY },
         columnStyles: {
-          0: { cellWidth: 20, fontStyle: "bold" },
-          1: { cellWidth: 42 },
-          2: { cellWidth: 38 },
-          3: { cellWidth: 27, halign: "right" },
-          4: { cellWidth: 17, halign: "center" },
-          5: { cellWidth: 38, halign: "center", overflow: "linebreak" },
+          0: { cellWidth: 17, fontStyle: "bold" },
+          1: { cellWidth: 29 },
+          2: { cellWidth: 32 },
+          3: { cellWidth: 23, halign: "right" },
+          4: { cellWidth: 16, halign: "center" },
+          5: { cellWidth: 23, halign: "center", overflow: "linebreak" },
+          6: { cellWidth: 42, halign: "left", overflow: "linebreak", valign: "top" },
         },
         margin: { top: 20, left: marginLeft, right: marginRight, bottom: 36 },
         showHead: "everyPage",
+        rowPageBreak: "avoid",
         styles: { lineColor: [225, 225, 225], lineWidth: 0.1 },
         didParseCell: (data) => {
           if (data.section === "body" && data.column.index === 4) {

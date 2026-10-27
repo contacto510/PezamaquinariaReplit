@@ -362,6 +362,7 @@ export const reportPayments = pgTable("report_payments", {
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   paymentDate: timestamp("payment_date").notNull(),
   paymentMethod: text("payment_method").notNull(), // efectivo, transferencia, cheque, etc.
+  paymentGroupId: text("payment_group_id"), // vínculo de las aplicaciones de un mismo pago global; histórico desconocido = null
   reference: text("reference"), // numero de cheque, transferencia, etc.
   notes: text("notes"), // notas adicionales
   createdBy: text("created_by").notNull(), // quien registró el abono
@@ -392,7 +393,7 @@ export const reportPaymentInsertSchema = createInsertSchema(reportPayments, {
   amount: (schema) => schema.min(0.01, "El monto debe ser mayor a 0"),
   paymentMethod: (schema) => schema.min(1, "Método de pago es requerido"),
   createdBy: (schema) => schema.min(1, "Creado por es requerido")
-});
+}).omit({ paymentGroupId: true }); // only the global-payment server transaction assigns this identity
 
 // Schema específico para actualización de pagos (reportId nunca es editable)
 export const reportPaymentUpdateSchema = z.object({

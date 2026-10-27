@@ -996,12 +996,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const paymentDate = new Date(`${data.paymentDate}T12:00:00`);
+        // One server-generated identity per receipt, never inferred from dates,
+        // amounts or a customer-supplied bank reference.
+        const paymentGroupId = crypto.randomUUID();
         const inserted = await tx.insert(reportPayments).values(
           data.allocations.map(allocation => ({
             reportId: allocation.reportId,
             amount: allocation.amount.toFixed(2),
             paymentDate,
             paymentMethod: data.paymentMethod,
+            paymentGroupId,
             reference: data.reference || null,
             notes: data.notes || null,
             createdBy: session.email

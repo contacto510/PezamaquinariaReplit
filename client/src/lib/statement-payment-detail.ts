@@ -1,10 +1,12 @@
-type StatementPayment = {
+export type StatementPayment = {
   id?: number | null;
   amount?: string | number | null;
   paymentDate?: string | Date | null;
+  paymentMethod?: string | null;
+  paymentGroupId?: string | null;
 };
 
-const currency = new Intl.NumberFormat("es-MX", {
+export const statementCurrency = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
   minimumFractionDigits: 2,
@@ -22,7 +24,7 @@ function validCalendarDay(value: string): boolean {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-function paymentDate(value: StatementPayment["paymentDate"]) {
+export function statementPaymentDate(value: StatementPayment["paymentDate"]) {
   // Match the payment dialog's Mexican calendar date, not createdAt (entry date)
   // or the report's date. Bare calendar dates must not shift back one day.
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -44,6 +46,19 @@ function paymentDate(value: StatementPayment["paymentDate"]) {
   return { label: `${day}/${month}/${year}`, key: `${year}${month}${day}` };
 }
 
+export function paymentGroupLabel(id: string): string {
+  // Full UUID: two distinct receipts must never share an abbreviated label.
+  return `PG-${id}`;
+}
+
+export function statementPaymentMethod(method?: string | null): string {
+  const labels: Record<string, string> = {
+    efectivo: "Efectivo", transferencia: "Transferencia", cheque: "Cheque",
+    tarjeta: "Tarjeta", deposito: "Depósito", Sistema: "Sistema",
+  };
+  return method ? labels[method] || "Método no registrado" : "Método no registrado";
+}
+
 /**
  * Presentation only: the authoritative paid amount still comes from the
  * shared account rules. Missing evidence must never become a fabricated payment.
@@ -51,16 +66,20 @@ function paymentDate(value: StatementPayment["paymentDate"]) {
 export function getStatementPaymentDetail(
   payments: StatementPayment[] | null | undefined,
   totalPaid: number,
-): { tableText: string; noteText: string } {
+): { tableText: string; noteText: string; paymentLines: string[] } {
   const entries = (payments || []).flatMap((payment, index) => {
     const amount = Number(payment.amount);
     if (!Number.isFinite(amount) || amount <= 0) return [];
-    const date = paymentDate(payment.paymentDate);
+    const date = statementPaymentDate(payment.paymentDate);
+    const context = [
+      ...(payment.paymentMethod ? [statementPaymentMethod(payment.paymentMethod)] : []),
+      ...(payment.paymentGroupId ? [paymentGroupLabel(payment.paymentGroupId)] : []),
+    ];
     return [{
       amount,
       date,
       index,
-      text: `${currency.format(amount)} — ${date?.label || "Fecha no registrada"}`,
+      text: `${statementCurrency.format(amount)} — ${date?.label || "Fecha no registrada"}${context.length ? ` (${context.join("; ")})` : ""}`,
     }];
   }).sort((a, b) =>
     (a.date?.key || "99999999").localeCompare(b.date?.key || "99999999") ||
@@ -70,10 +89,11 @@ export function getStatementPaymentDetail(
   if (entries.length === 0) {
     return totalPaid > 0
       ? {
-        tableText: `${currency.format(totalPaid)}\nSin desglose registrado`,
-        noteText: `Total abonado: ${currency.format(totalPaid)}. Sin desglose de movimientos registrado.`,
+        tableText: `${statementCurrency.format(totalPaid)}\nSin desglose registrado`,
+        noteText: `Total abonado: ${statementCurrency.format(totalPaid)}. Sin desglose de movimientos registrado.`,
+        paymentLines: [],
       }
-      : { tableText: currency.format(totalPaid), noteText: "Sin abonos registrados." };
+      : { tableText: statementCurrency.format(totalPaid), noteText: "Sin abonos registrados.", paymentLines: [] };
   }
 
   const recordedCents = entries.reduce((sum, entry) => sum + Math.round(entry.amount * 100), 0);
@@ -83,9 +103,10 @@ export function getStatementPaymentDetail(
   return {
     tableText: [
       ...lines,
-      `Total: ${currency.format(totalPaid)}`,
+      `Total: ${statementCurrency.format(totalPaid)}`,
       ...(mismatched ? [warning] : []),
     ].join("\n"),
-    noteText: `Abonos registrados: ${lines.join("; ")}. Total abonado: ${currency.format(totalPaid)}.${mismatched ? ` ${warning}` : ""}`,
+    noteText: `Abonos registrados: ${lines.join("; ")}. Total abonado: ${statementCurrency.format(totalPaid)}.${mismatched ? ` ${warning}` : ""}`,
+    paymentLines: lines,
   };
 }
