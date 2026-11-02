@@ -261,6 +261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET - Verificar sesión activa (renueva la cookie: sesión "rodante")
   app.get(`${apiPrefix}/me`, (req, res) => {
+    res.set("Cache-Control", "no-store");
     const session = verifySessionToken(parseCookies(req)[SESSION_COOKIE]);
     if (!session) {
       return res.status(401).json({ authenticated: false });

@@ -1,6 +1,7 @@
 import { Switch, Route, useLocation } from "wouter";
-import { useEffect, useState, Component, lazy, Suspense } from "react";
+import { useEffect, useRef, useState, Component, lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
+import { checkSession } from "./lib/session-check";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import Login from "@/pages/Login";
@@ -254,40 +255,53 @@ function Router() {
   const [location, navigate] = useLocation();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionCheckFailed, setSessionCheckFailed] = useState(false);
+  const [sessionCheckAttempt, setSessionCheckAttempt] = useState(0);
+  const sessionController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // La cookie firmada del servidor es la única fuente de verdad. localStorage
     // puede sobrevivir a una publicación aunque la sesión ya no sea válida.
-    fetch('/api/me', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.authenticated) {
+    const controller = new AbortController();
+    sessionController.current = controller;
+    setIsLoading(true);
+    setSessionCheckFailed(false);
+    checkSession({ signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        if (result.status === "authenticated") {
           localStorage.setItem('isAuthenticated', 'true');
-          if (data.user?.email) localStorage.setItem('userEmail', data.user.email);
+          localStorage.setItem('userEmail', result.email);
           setIsAuthenticated(true);
-        } else {
+        } else if (result.status === "unauthenticated") {
           localStorage.removeItem('isAuthenticated');
           localStorage.removeItem('userEmail');
           queryClient.clear();
           setIsAuthenticated(false);
+        } else {
+          setSessionCheckFailed(true);
         }
       })
       .catch(() => {
-        localStorage.removeItem('isAuthenticated');
-        localStorage.removeItem('userEmail');
-        queryClient.clear();
-        setIsAuthenticated(false);
+        if (!controller.signal.aborted) setSessionCheckFailed(true);
       })
-      .finally(() => setIsLoading(false));
-  }, []);
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoading(false);
+      });
+    return () => {
+      controller.abort();
+      if (sessionController.current === controller) sessionController.current = null;
+    };
+  }, [sessionCheckAttempt]);
 
   // Monitorear cambios en localStorage para actualizar autenticación
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'isAuthenticated') {
-        const auth = e.newValue === 'true';
-        console.log('Auth changed via storage event:', auth);
-        setIsAuthenticated(auth);
+        // Another tab can request a recheck, but cannot grant access or
+        // revoke a valid server session through a browser flag alone.
+        setIsLoading(true);
+        setSessionCheckAttempt((attempt) => attempt + 1);
       }
     };
 
@@ -297,7 +311,9 @@ function Router() {
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      sessionController.current?.abort();
       queryClient.clear();
+      setSessionCheckFailed(false);
       setIsAuthenticated(false);
       setIsLoading(false);
     };
@@ -308,7 +324,7 @@ function Router() {
   // Redirigir cuando cambia el estado de autenticación
   useEffect(() => {
     console.log('Auth state:', isAuthenticated, 'Location:', location);
-    if (!isLoading) {
+    if (!isLoading && !sessionCheckFailed) {
       if (!isAuthenticated && location !== '/login') {
         console.log('Not authenticated, redirecting to login');
         navigate('/login');
@@ -317,7 +333,7 @@ function Router() {
         navigate('/dashboard');
       }
     }
-  }, [isAuthenticated, location, isLoading, navigate]);
+  }, [isAuthenticated, location, isLoading, sessionCheckFailed, navigate]);
 
   if (isLoading) {
     return (
@@ -325,6 +341,30 @@ function Router() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
           <p className="text-gray-600">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionCheckFailed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-100 p-6">
+        <div className="max-w-md space-y-4 text-center" role="alert">
+          <h1 className="text-xl font-semibold">No se pudo comprobar la conexión</h1>
+          <p className="text-gray-600">
+            Esto no confirma que tu sesión haya vencido. No se han borrado tus datos de acceso.
+            Por seguridad, esperamos la respuesta del servidor antes de abrir el sistema.
+          </p>
+          <button
+            type="button"
+            className="rounded-lg bg-yellow-400 px-5 py-3 font-semibold text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            onClick={() => {
+              setIsLoading(true);
+              setSessionCheckAttempt((attempt) => attempt + 1);
+            }}
+          >
+            Volver a intentar
+          </button>
         </div>
       </div>
     );
