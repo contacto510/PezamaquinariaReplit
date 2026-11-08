@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { RepairItemData, Concept } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency, parseNumber } from "@/lib/utils";
+import { repairConceptDescription, searchRepairConcepts } from "@/lib/repair-concept-search";
 
 interface RepairItemsTableProps {
   items: (RepairItemData & { id?: number })[];
@@ -63,10 +64,11 @@ export default function RepairItemsTable({
     const spaceAbove = rect.top;
     const desiredHeight = 240;
     const openUp = spaceBelow < desiredHeight && spaceAbove > spaceBelow;
+    const width = Math.min(Math.max(rect.width, 400), window.innerWidth - 16);
     setDropdownPos({
       top: openUp ? rect.top : rect.bottom,
-      left: rect.left,
-      width: rect.width,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      width,
       openUp,
     });
   }, []);
@@ -151,37 +153,11 @@ export default function RepairItemsTable({
     };
   }, [items.length]);
 
-  const normalize = (str: string) =>
-    str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-
-  const getFilteredConceptsByCategory = (index: number) => {
-    const searchTerm = normalize(items[index]?.concept || "");
-    
-    // Separar conceptos en dos categorías
-    const repairConcepts = concepts.filter(concept =>
-      concept.description?.includes('[REPAIR]')
-    );
-    
-    const generalConcepts = concepts.filter(concept =>
-      !concept.description?.includes('[REPAIR]')
-    );
-
-    // Filtrar ambas categorías (con o sin acento)
-    const filteredRepair = repairConcepts.filter(concept => 
-      normalize(concept.name).includes(searchTerm) ||
-      (concept.description && normalize(concept.description).includes(searchTerm))
-    );
-    
-    const filteredGeneral = generalConcepts.filter(concept => 
-      normalize(concept.name).includes(searchTerm) ||
-      (concept.description && normalize(concept.description).includes(searchTerm))
-    );
-
-    return {
-      repair: filteredRepair,
-      general: filteredGeneral
-    };
-  };
+  const searchTerm = activeRow === null ? "" : items[activeRow]?.concept ?? "";
+  const matchingConcepts = useMemo(
+    () => searchRepairConcepts(concepts, searchTerm),
+    [concepts, searchTerm],
+  );
 
   const selectConcept = (index: number, concept: Concept) => {
     const unitPrice = parseFloat(concept.defaultPrice?.toString() || "0");
@@ -256,11 +232,16 @@ export default function RepairItemsTable({
                       setTimeout(() => setActiveRow(null), 200);
                     }}
                     onKeyDown={(e) => {
+                      if (e.key === 'Escape') setActiveRow(null);
                       if (e.key === 'Enter') {
                         e.preventDefault();
                       }
                     }}
-                    placeholder="Escribe o selecciona un concepto..."
+                    aria-label={`Concepto de reparación ${index + 1}`}
+                    aria-expanded={activeRow === index && dropdownPos !== null}
+                    aria-controls={activeRow === index ? "repair-concept-suggestions" : undefined}
+                    autoComplete="off"
+                    placeholder="Buscar por palabras: aire filtro..."
                     className="w-full"
                   />
                 </div>
@@ -390,10 +371,9 @@ export default function RepairItemsTable({
         </div>
       </div>
 
-      {activeRow !== null && dropdownPos && items[activeRow]?.concept && (() => {
-        const { repair, general } = getFilteredConceptsByCategory(activeRow);
+      {activeRow !== null && dropdownPos && items[activeRow] && (() => {
+        const { repair, general } = matchingConcepts;
         const hasResults = repair.length > 0 || general.length > 0;
-        if (!hasResults) return null;
         const idx = activeRow;
         const maxHeight = 240;
         const style: React.CSSProperties = {
@@ -403,15 +383,23 @@ export default function RepairItemsTable({
           maxHeight,
           zIndex: 9999,
           ...(dropdownPos.openUp
-            ? { top: dropdownPos.top - maxHeight - 4 }
+             ? { top: dropdownPos.top - 4, transform: "translateY(-100%)" }
             : { top: dropdownPos.top + 4 }),
         };
         return createPortal(
           <div
+            id="repair-concept-suggestions"
             style={style}
             className="bg-white border-2 border-blue-300 rounded-md shadow-lg overflow-auto"
             onMouseDown={(e) => e.preventDefault()}
           >
+            {!hasResults && (
+              <div className="px-4 py-3 text-sm text-gray-500" role="status">
+                {concepts.length === 0
+                  ? "No hay conceptos disponibles en el catálogo."
+                  : "No se encontraron conceptos. Prueba con otras palabras."}
+              </div>
+            )}
             {repair.length > 0 && (
               <>
                 <div className="px-4 py-2 bg-blue-100 sticky top-0 font-semibold text-sm text-blue-900 border-b border-blue-300">
@@ -427,13 +415,15 @@ export default function RepairItemsTable({
                       selectConcept(idx, concept);
                     }}
                   >
-                    <div className="font-medium text-gray-900">✓ {concept.name}</div>
-                    {concept.description && (
-                      <div className="text-xs text-gray-500 mt-0.5">{concept.description}</div>
+                    <div className="font-medium text-gray-900 break-words">{concept.name}</div>
+                    {repairConceptDescription(concept.description) && (
+                      <div className="text-xs text-gray-500 mt-0.5 break-words">{repairConceptDescription(concept.description)}</div>
                     )}
-                    {concept.defaultPrice && (
-                      <div className="text-xs text-green-600 mt-1">Precio: ${parseFloat(concept.defaultPrice?.toString() || "0").toFixed(2)}</div>
-                    )}
+                    <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-600">
+                      <span>Unidad: {concept.defaultUnit || "Sin unidad"}</span>
+                      <span>Precio: {concept.defaultPrice != null && concept.defaultPrice !== ""
+                        ? formatCurrency(Number(concept.defaultPrice)) : "Sin precio"}</span>
+                    </div>
                   </div>
                 ))}
               </>
@@ -453,13 +443,15 @@ export default function RepairItemsTable({
                       selectConcept(idx, concept);
                     }}
                   >
-                    <div className="font-medium text-gray-900">• {concept.name}</div>
-                    {concept.description && (
-                      <div className="text-xs text-gray-500 mt-0.5">{concept.description}</div>
+                    <div className="font-medium text-gray-900 break-words">{concept.name}</div>
+                    {repairConceptDescription(concept.description) && (
+                      <div className="text-xs text-gray-500 mt-0.5 break-words">{repairConceptDescription(concept.description)}</div>
                     )}
-                    {concept.defaultPrice && (
-                      <div className="text-xs text-green-600 mt-1">Precio: ${parseFloat(concept.defaultPrice?.toString() || "0").toFixed(2)}</div>
-                    )}
+                    <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-600">
+                      <span>Unidad: {concept.defaultUnit || "Sin unidad"}</span>
+                      <span>Precio: {concept.defaultPrice != null && concept.defaultPrice !== ""
+                        ? formatCurrency(Number(concept.defaultPrice)) : "Sin precio"}</span>
+                    </div>
                   </div>
                 ))}
               </>
