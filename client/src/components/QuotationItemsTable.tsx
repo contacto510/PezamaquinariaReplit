@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { 
@@ -17,7 +17,7 @@ import {
 import { Check } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn, formatCurrency } from "@/lib/utils";
-import { conceptMatches, conceptFilter } from "@/lib/concept-filter";
+import { searchQuotationConcepts } from "@/lib/quotation-concept-search";
 import { authenticatedFetch } from "@/lib/queryClient";
 import type { QuotationItemData, Concept } from "@shared/schema";
 
@@ -103,7 +103,7 @@ export default function QuotationItemsTable({
   const [searchTerm, setSearchTerm] = useState<string>("");
   
   // Obtener la lista de conceptos
-  const { data: concepts } = useQuery<Concept[]>({
+  const { data: concepts, isLoading, isError } = useQuery<Concept[]>({
     queryKey: ['/api/concepts'],
     queryFn: async () => {
       const res = await authenticatedFetch('/api/concepts?active=true');
@@ -111,6 +111,11 @@ export default function QuotationItemsTable({
       return res.json();
     }
   });
+
+  const matchingConcepts = useMemo(
+    () => searchQuotationConcepts(concepts ?? [], searchTerm),
+    [concepts, searchTerm],
+  );
 
   // Función para seleccionar un concepto de la lista
   const selectConcept = (index: number, concept: Concept) => {
@@ -122,6 +127,7 @@ export default function QuotationItemsTable({
     };
     onUpdateItem(index, updatedItem);
     setOpenConceptPopover(null);
+    setSearchTerm("");
   };
 
   // Handle concept change
@@ -247,7 +253,11 @@ export default function QuotationItemsTable({
                             value={item.concept}
                             onChange={(e) => handleConceptChange(index, e.target.value)}
                             className="shadow-sm block w-full text-sm rounded-md py-1.5 px-2 pr-8"
-                            onClick={() => setOpenConceptPopover(index)}
+                            aria-label={`Concepto ${index + 1}`}
+                            onClick={() => {
+                              setSearchTerm("");
+                              setOpenConceptPopover(index);
+                            }}
                           />
                           <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
                             <i className="ri-arrow-down-s-line text-gray-400"></i>
@@ -257,26 +267,34 @@ export default function QuotationItemsTable({
                       <PopoverContent className="p-0 w-[min(92vw,520px)] max-h-[300px]" align="start">
                         <Command shouldFilter={false}>
                           <CommandInput 
-                            placeholder="Buscar concepto..." 
+                            placeholder="Buscar por palabras: entrega obra..."
+                            aria-label="Buscar concepto por palabras"
                             value={searchTerm}
                             onValueChange={setSearchTerm}
                           />
                           <CommandList>
-                            <CommandEmpty>No se encontraron conceptos</CommandEmpty>
+                            <CommandEmpty>
+                              {isLoading ? "Cargando conceptos..." : isError
+                                ? "No se pudieron cargar los conceptos."
+                                : "No se encontraron conceptos"}
+                            </CommandEmpty>
                             <CommandGroup>
-                              {concepts?.filter(concept => 
-                                conceptMatches(concept.name, searchTerm || item.concept)
-                              ).sort((a, b) =>
-                                conceptFilter(b.name, searchTerm || item.concept) -
-                                conceptFilter(a.name, searchTerm || item.concept)
-                              ).map((concept) => (
+                              {matchingConcepts.map((concept) => (
                                 <CommandItem
                                   key={concept.id}
-                                  value={concept.name}
+                                  value={String(concept.id)}
                                   onSelect={() => selectConcept(index, concept)}
                                   className="flex items-start justify-between gap-2"
                                 >
-                                  <div className="flex-1 whitespace-normal break-words leading-snug text-left">{concept.name}</div>
+                                  <div className="min-w-0 flex-1 whitespace-normal break-words leading-snug text-left">
+                                    <div>{concept.name}</div>
+                                    <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                                      <span>Unidad: {concept.defaultUnit || "Sin unidad"}</span>
+                                      <span>Precio: {concept.defaultPrice != null && concept.defaultPrice !== ""
+                                        ? formatCurrency(Number(concept.defaultPrice))
+                                        : "Sin precio"}</span>
+                                    </div>
+                                  </div>
                                   {concept.name === item.concept && <Check size={16} className="mt-0.5 shrink-0" />}
                                 </CommandItem>
                               ))}
