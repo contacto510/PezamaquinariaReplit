@@ -4,6 +4,7 @@ import { RepairItemData, Concept } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RepairPriceInput from "@/components/RepairPriceInput";
+import RepairConceptCatalogStatus from "@/components/RepairConceptCatalogStatus";
 import {
   Table,
   TableBody,
@@ -29,6 +30,9 @@ interface RepairItemsTableProps {
   onInsertItem: (afterIndex: number) => void;
   onUpdateItem: (index: number, item: RepairItemData) => void;
   concepts: Concept[];
+  conceptsLoading: boolean;
+  conceptsError: boolean;
+  onRetryConcepts: () => void;
   subtotal: number;
   iva: number;
   total: number;
@@ -41,6 +45,9 @@ export default function RepairItemsTable({
   onInsertItem,
   onUpdateItem,
   concepts,
+  conceptsLoading,
+  conceptsError,
+  onRetryConcepts,
   subtotal,
   iva,
   total,
@@ -188,6 +195,11 @@ export default function RepairItemsTable({
 
   return (
     <div className="space-y-4">
+      <RepairConceptCatalogStatus
+        loading={conceptsLoading}
+        error={conceptsError}
+        onRetry={onRetryConcepts}
+      />
       <div
         ref={topScrollRef}
         className="peza-top-scroll rounded"
@@ -373,6 +385,7 @@ export default function RepairItemsTable({
 
       {activeRow !== null && dropdownPos && items[activeRow] && (() => {
         const { repair, general } = matchingConcepts;
+        const catalogAvailable = !conceptsLoading && !conceptsError;
         const hasResults = repair.length > 0 || general.length > 0;
         const idx = activeRow;
         const maxHeight = 240;
@@ -393,14 +406,21 @@ export default function RepairItemsTable({
             className="bg-white border-2 border-blue-300 rounded-md shadow-lg overflow-auto"
             onMouseDown={(e) => e.preventDefault()}
           >
-            {!hasResults && (
+            {!catalogAvailable && (
+              <div className="px-4 py-3 text-sm text-gray-500" role="status">
+                {conceptsLoading
+                  ? "Cargando conceptos..."
+                  : "No se pudieron cargar los conceptos. Pulsa Reintentar en el aviso del catálogo."}
+              </div>
+            )}
+            {catalogAvailable && !hasResults && (
               <div className="px-4 py-3 text-sm text-gray-500" role="status">
                 {concepts.length === 0
                   ? "No hay conceptos disponibles en el catálogo."
                   : "No se encontraron conceptos. Prueba con otras palabras."}
               </div>
             )}
-            {repair.length > 0 && (
+            {catalogAvailable && repair.length > 0 && (
               <>
                 <div className="px-4 py-2 bg-blue-100 sticky top-0 font-semibold text-sm text-blue-900 border-b border-blue-300">
                   CONCEPTOS DE REPARACIÓN
@@ -428,7 +448,7 @@ export default function RepairItemsTable({
                 ))}
               </>
             )}
-            {general.length > 0 && (
+            {catalogAvailable && general.length > 0 && (
               <>
                 <div className="px-4 py-2 bg-gray-100 sticky top-0 font-semibold text-sm text-gray-900 border-b border-gray-300">
                   CONCEPTOS GENERALES

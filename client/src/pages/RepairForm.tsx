@@ -137,21 +137,26 @@ export default function RepairForm() {
   });
 
   // Consulta de conceptos para autocompletar
-  const { data: concepts = [] } = useQuery({
+  const {
+    data: concepts = [],
+    isPending: conceptsPending,
+    isFetching: conceptsFetching,
+    isError: conceptsError,
+    refetch: refetchConcepts,
+  } = useQuery<Concept[]>({
     queryKey: ['/api/concepts', { active: true }],
     queryFn: async () => {
-      try {
-        const response = await apiRequest('/api/concepts?active=true');
-        // Retornar TODOS los conceptos (tanto de reparación como generales)
-        // El componente RepairItemsTable se encarga de categorizarlos
-        return response as Concept[];
-      } catch (error) {
-        console.error("Error al cargar conceptos:", error);
-        return [];
+      const response = await apiRequest('/api/concepts?active=true');
+      if (!Array.isArray(response)) {
+        throw new Error("Respuesta inválida al cargar el catálogo de conceptos");
       }
+      // Una falla debe conservarse como error, nunca convertirse en un catálogo vacío.
+      return response as Concept[];
     },
     refetchOnWindowFocus: false,
+    retry: 1,
   });
+  const conceptsLoading = conceptsPending || conceptsFetching;
 
   // Si estamos en modo edición, cargamos los datos de la reparación
   const { data: repair, isLoading } = useQuery({
@@ -447,6 +452,14 @@ export default function RepairForm() {
 
   const onSubmit = async (data: RepairFormData) => {
     if (submitting.current || mutation.isPending) return;
+    if (!data.reviewOnly && (conceptsLoading || conceptsError)) {
+      toast({
+        title: conceptsLoading ? "Cargando conceptos" : "No se pudieron cargar los conceptos",
+        description: "Espera a que cargue el catálogo o pulsa Reintentar antes de guardar. Lo que llevas capturado se conserva.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (Object.values(uploadingImages).some(Boolean)) {
       toast({
         title: "Fotos subiendo",
@@ -1134,6 +1147,9 @@ export default function RepairForm() {
                 onInsertItem={handleInsertItem}
                 onUpdateItem={handleUpdateItem}
                 concepts={concepts}
+                conceptsLoading={conceptsLoading}
+                conceptsError={conceptsError}
+                onRetryConcepts={() => { void refetchConcepts(); }}
                 subtotal={subtotal}
                 iva={iva}
                 total={total}
