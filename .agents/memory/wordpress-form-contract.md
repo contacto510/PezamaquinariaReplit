@@ -16,3 +16,9 @@ Procesar únicamente los campos correspondientes a `tipo_solicitud`, aunque el e
 **Why:** El usuario confirmó que el antiguo campo «Empresa» era un honeypot y se renombró para evitar confusiones.
 
 **How to apply:** No mapearlo a clientes ni mostrarlo como información de la solicitud. Fotografías opcionales quedaron para una fase posterior.
+
+El usuario informó que WordPress genera `submission_id` como UUID v4, lo conserva en reintentos y lo renueva después de un envío exitoso. Es una descripción de la configuración externa, no una prueba de recepción.
+
+**Why:** El formulario vacío de Datos usa el envío nativo de Bricks; no debe asumirse que faltar un campo visible implica que no se añade mediante código.
+
+**How to apply:** Verificar que «exitoso» signifique confirmación de aceptación del receptor (201, o 200 de duplicado aceptado), no solo éxito visual de Bricks o envío SMTP.
