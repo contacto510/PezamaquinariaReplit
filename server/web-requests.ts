@@ -3,6 +3,26 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { and, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@db";
 import { webRequests, webRequestSchema } from "@shared/web-requests";
+import { z } from "zod";
+
+function normalizeRadio(value: Record<string, unknown>, field: string) {
+  const unwrap = (input: unknown) => Array.isArray(input) && input.length === 1 ? input[0] : input;
+  const plain = unwrap(value[field]);
+  const bracketed = unwrap(value[`${field}[]`]);
+  if (plain !== undefined && bracketed !== undefined && JSON.stringify(plain) !== JSON.stringify(bracketed)) {
+    throw new z.ZodError([{ code: z.ZodIssueCode.custom, path: [field], message: "Opciones contradictorias" }]);
+  }
+  if (plain !== undefined || bracketed !== undefined) value[field] = plain ?? bracketed;
+  delete value[`${field}[]`];
+}
+
+export function invalidWebRequestFields(error: unknown): string[] | null {
+  if (error instanceof z.ZodError) {
+    return Array.from(new Set(error.issues.map(issue => String(issue.path[0] ?? "body"))));
+  }
+  if (error instanceof Error && error.message === "Página de origen no permitida") return ["pagina_url"];
+  return null;
+}
 
 export function webhookAuthorized(header: unknown, secret: string | undefined): boolean {
   if (!secret || secret.length < 32 || typeof header !== "string" || header.length > 512) return false;
@@ -13,10 +33,10 @@ export function webhookAuthorized(header: unknown, secret: string | undefined): 
 export function parseWebRequest(body: unknown) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return webRequestSchema.parse(body);
   const value = { ...body } as Record<string, unknown>;
-  // Bricks radios may serialize as a single-element array.
-  if (Array.isArray(value.tipo_solicitud) && value.tipo_solicitud.length === 1) {
-    value.tipo_solicitud = value.tipo_solicitud[0];
-  }
+  // Bricks radios may arrive as scalars, single-element arrays or bracketed names.
+  normalizeRadio(value, "tipo_solicitud");
+  // Inactive rental fields must not invalidate a repair request.
+  if (value.tipo_solicitud === "cotizacion_renta") normalizeRadio(value, "entrega");
   const parsed = webRequestSchema.parse(value);
   const source = new URL(parsed.pagina_url);
   if (source.protocol !== "https:" || !["sd.pezamaquinaria.com.mx", "pezamaquinaria.com.mx", "www.pezamaquinaria.com.mx"].includes(source.hostname)) {
@@ -58,8 +78,10 @@ export function registerWebRequestWebhook(app: Express) {
       if (outcome.code === 409) return res.status(409).json({ message: "Identificador reutilizado con datos diferentes" });
       return res.status(outcome.code).json({ accepted: true, duplicate: outcome.duplicate });
     } catch (error) {
-      if ((error as any)?.name === "ZodError" || (error as Error)?.message === "Página de origen no permitida") {
-        return res.status(400).json({ message: "Datos de solicitud inválidos; verificar los campos y el identificador de envío" });
+      const invalidFields = invalidWebRequestFields(error);
+      if (invalidFields) {
+        // Only field names, never values or credentials, are returned to the authenticated sender.
+        return res.status(400).json({ message: "Datos de solicitud inválidos; verificar los campos y el identificador de envío", camposInvalidos: invalidFields });
       }
       console.error("No se pudo recibir solicitud web"); // Do not log personal data or headers.
       return res.status(503).json({ message: "No se pudo guardar; conservar y reintentar el envío" });

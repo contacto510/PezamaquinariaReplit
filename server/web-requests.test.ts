@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseWebRequest, webhookAuthorized } from "./web-requests";
+import { parseWebRequest, webhookAuthorized, invalidWebRequestFields } from "./web-requests";
 
 const common = {
   submission_id: "test-form-unique-001",
@@ -30,6 +30,43 @@ test("reparación excluye valores viejos de renta aunque sean inválidos", () =>
   assert.equal("dias_renta" in parsed, false);
   assert.equal("cantidad_equipos" in parsed, false);
   assert.equal("entrega" in parsed, false);
+});
+test("ambas opciones de entrega aceptan texto y arreglo de un elemento", () => {
+  for (const option of ["entrega_obra", "recoge_sucursal"]) {
+    const base = { ...common, tipo_solicitud: "cotizacion_renta", cantidad_equipos: 1, dias_renta: 2 };
+    assert.deepEqual(parseWebRequest({ ...base, entrega: [option] }), parseWebRequest({ ...base, entrega: option }));
+  }
+});
+test("acepta nombres con corchetes sin alterar el contrato guardado", () => {
+  const parsed = parseWebRequest({ ...common, "tipo_solicitud[]": ["cotizacion_renta"], cantidad_equipos: 1, dias_renta: 2, "entrega[]": ["entrega_obra"] });
+  assert.equal(parsed.tipo_solicitud, "cotizacion_renta");
+  assert.equal(parsed.tipo_solicitud === "cotizacion_renta" && parsed.entrega, "entrega_obra");
+  assert.equal("entrega[]" in parsed, false);
+  assert.equal("tipo_solicitud[]" in parsed, false);
+});
+test("rechaza entregas ambiguas, vacías, inválidas o contradictorias", () => {
+  const base = { ...common, tipo_solicitud: "cotizacion_renta", cantidad_equipos: 1, dias_renta: 2 };
+  for (const entrega of [[], ["entrega_obra", "recoge_sucursal"], ["otra"], [["entrega_obra"]]]) {
+    assert.throws(() => parseWebRequest({ ...base, entrega }));
+  }
+  assert.throws(() => parseWebRequest({ ...base, entrega: "entrega_obra", "entrega[]": ["recoge_sucursal"] }));
+  assert.throws(() => parseWebRequest({ ...base, entrega: "entrega_obra", "tipo_solicitud[]": ["reparacion"] }));
+});
+test("reparación ignora incluso opciones de entrega contradictorias que quedaron ocultas", () => {
+  const parsed = parseWebRequest({ ...common, tipo_solicitud: ["reparacion"], falla_reportada: "No enciende", entrega: ["entrega_obra"], "entrega[]": ["recoge_sucursal"] });
+  assert.equal("entrega" in parsed, false);
+  assert.equal("entrega[]" in parsed, false);
+});
+test("no genera automáticamente el identificador y devuelve solo nombres de campos inválidos", () => {
+  const { submission_id, ...withoutId } = common;
+  try {
+    parseWebRequest({ ...withoutId, tipo_solicitud: "reparacion", falla_reportada: "No enciende" });
+    assert.fail("Debe rechazar un envío sin identificador");
+  } catch (error) {
+    assert.deepEqual(invalidWebRequestFields(error), ["submission_id"]);
+    assert.equal(JSON.stringify(invalidWebRequestFields(error)).includes(common.nombre), false);
+  }
+  assert.equal(invalidWebRequestFields(new Error("Error interno")), null);
 });
 test("rechaza tipos ambiguos y campos requeridos faltantes", () => {
   assert.throws(() => parseWebRequest({ ...common, tipo_solicitud: ["reparacion", "cotizacion_renta"] }));

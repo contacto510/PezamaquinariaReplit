@@ -41,8 +41,12 @@ try {
     falla_reportada: "No debe guardarse", hp_check: "",
   };
   assert.equal((await send(rental, "incorrecta")).status, 401);
+  const { submission_id, ...missingId } = rental;
+  const invalid = await send(missingId);
+  assert.equal(invalid.status, 400);
+  assert.deepEqual((await invalid.json()).camposInvalidos, ["submission_id"]);
   assert.equal((await send(rental)).status, 201);
-  const retry = await send(rental);
+  const retry = await send({ ...rental, tipo_solicitud: ["cotizacion_renta"], entrega: ["recoge_sucursal"] });
   assert.equal(retry.status, 200);
   assert.equal((await retry.json()).duplicate, true);
   assert.equal((await send({ ...rental, equipo: "Datos distintos" })).status, 409);

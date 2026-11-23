@@ -43,6 +43,9 @@ Comunes: `submission_id`, `tipo_solicitud`, `nombre`, `telefono`, `correo`,
   NO regenerarlo en cada intento HTTP ni deducirlo del nombre/teléfono.
 - `tipo_solicitud`: `cotizacion_renta` o `reparacion`; también se acepta un arreglo
   de un solo valor por la serialización de radios de Bricks.
+- Se normalizan los radios `tipo_solicitud` y `entrega`, incluyendo claves con
+  sufijo `[]`. Se rechazan múltiples opciones o aliases contradictorios; los campos
+  de renta ocultos no invalidan solicitudes de reparación.
 - Nombre, teléfono, equipo y página de origen HTTPS son obligatorios.
 - Correo puede estar vacío. Los campos desconocidos no se guardan.
 - Renta: `cantidad_equipos` y `dias_renta` enteros positivos; `entrega` es
@@ -82,6 +85,7 @@ Ejemplo ficticio:
 - 200 con `duplicate: true`: ya guardado; marcar entregado sin crear otro.
 - 400/409: revisar datos/identificador; conservar la solicitud para corrección,
   no reintentar indefinidamente.
+  Un 400 incluye `camposInvalidos`, únicamente nombres de campos (sin sus valores).
 - 401: revisar credencial en servidores; no solicitarla al visitante.
 - 413/415: corregir tamaño/formato.
 - 429: máximo 120 solicitudes nuevas por hora, entre todas las instancias.
