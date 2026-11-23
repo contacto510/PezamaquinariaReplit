@@ -14,3 +14,4 @@
 - [Cobro de revisión](repair-review-billing.md) — solo revisión cobra únicamente ese importe; al autorizar reparación se suma una sola vez a los conceptos.
 - [Taller en reparaciones](repair-workshop.md) — reunir Diagnóstico y No Entregada sin borrar órdenes ni reescribir estados antes de publicar.
 - [Resumen financiero de reparaciones](repair-financial-summary.md) — vista de los mismos R-XX, cotizaciones sin deuda y actividad separada de saldo; sin costos no hay utilidad.
+- [Formulario de WordPress](wordpress-form-contract.md) — Bricks comparte plantilla; filtrar campos por tipo_solicitud y excluir hp_check de los datos comerciales.
