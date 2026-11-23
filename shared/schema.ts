@@ -3,6 +3,7 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { relations } from "drizzle-orm";
 import { z } from "zod";
 import { normalizeRepairStatus } from "./repair-status";
+export { webRequests } from "./web-requests";
 
 // Tabla de clientes
 export const clients = pgTable("clients", {

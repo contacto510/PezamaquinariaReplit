@@ -5,6 +5,11 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 app.use(compression());
+// The external integration accepts only small JSON payloads, never photos/base64.
+app.use("/api/integrations/bricks", (req, res, next) => {
+  if (req.method === "POST" && !req.is("application/json")) return res.status(415).json({ message: "Se requiere JSON" });
+  next();
+}, express.json({ limit: "32kb" }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
@@ -23,7 +28,7 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+      if (capturedJsonResponse && !path.startsWith("/api/web-requests") && !path.startsWith("/api/integrations/bricks")) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 

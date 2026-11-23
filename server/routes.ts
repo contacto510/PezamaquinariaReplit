@@ -37,6 +37,8 @@ import { buildAccountsReceivable } from "@shared/accounts-receivable";
 import { buildRepairDashboardSnapshot } from "@shared/repair-dashboard";
 import { InvalidLiquidationDate, parseLiquidationDay } from "./repair-liquidation";
 import { InvalidRepairReview } from "@shared/repair-review";
+import { registerWebRequestWebhook, registerPrivateWebRequests } from "./web-requests";
+import { WebRequestConversionError } from "./web-request-conversion";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -167,6 +169,7 @@ class ReportPaymentError extends Error {
 export async function registerRoutes(app: Express): Promise<Server> {
   // API prefix
   const apiPrefix = "/api";
+  registerWebRequestWebhook(app);
 
   // POST - Reporte de errores del cliente (mobile/desktop) para diagnóstico
   // Rate-limit simple en memoria por IP para evitar abuso/flooding.
@@ -280,6 +283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Todo lo registrado después de este punto es información privada del negocio.
   // Las únicas rutas públicas de API son client-errors, login, me y logout.
   app.use(apiPrefix, requireAuth);
+  registerPrivateWebRequests(app);
 
   // GET - Get the next quotation number
   app.get(`${apiPrefix}/quotations/next-number`, async (req, res) => {
@@ -362,6 +366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/quotations`, async (req, res) => {
     try {
       const { quotation, items } = req.body;
+      const webRequestId = z.number().int().positive().optional().parse(req.body.webRequestId);
       const seller = z.string().trim().min(1).safeParse(quotation?.salesperson);
       if (!seller.success) {
         return res.status(400).json({ message: "El vendedor es requerido" });
@@ -385,7 +390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedItems = z.array(quotationItemInsertSchema.omit({ quotationId: true })).parse(items);
       
       // Create quotation with items
-      const newQuotation = await storage.createQuotation(validatedQuotation, validatedItems);
+      const newQuotation = await storage.createQuotation(validatedQuotation, validatedItems, webRequestId);
       
       // Registrar/actualizar el cliente a partir de la cotización
       await storage.registerClientFromQuotation(newQuotation);
@@ -394,6 +399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(201).json(newQuotation);
     } catch (error) {
       console.error("Error creating quotation:", error);
+      if (error instanceof WebRequestConversionError) return res.status(409).json({ message: error.message });
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });
       }
@@ -1817,6 +1823,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/repairs`, async (req, res) => {
     try {
       const formData = req.body;
+      const webRequestId = z.number().int().positive().optional().parse(formData.webRequestId);
       const parsedForm = repairFormSchema.parse({
         ...formData,
         receivedDate: formData.receivedDate ? new Date(formData.receivedDate) : new Date(),
@@ -1871,10 +1878,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newRepair = await storage.createRepair(repairData, repairItems, {
         name: parsedForm.clientName,
         email: clientEmail,
-      });
+      }, webRequestId);
       res.status(201).json(newRepair);
     } catch (error) {
       console.error("Error al crear reparación:", error);
+      if (error instanceof WebRequestConversionError) return res.status(409).json({ message: error.message });
       if (error instanceof InvalidRepairReview) return res.status(400).json({ message: error.message });
       if (error instanceof z.ZodError) {
         return res.status(400).json({ errors: error.errors });

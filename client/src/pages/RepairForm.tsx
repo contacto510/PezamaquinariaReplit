@@ -33,6 +33,7 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 import RepairItemsTable from "@/components/RepairItemsTable";
+import WebRequestSource, { webRequestIdFromUrl } from "@/components/WebRequestSource";
 
 // Solo las fotos subidas al almacenamiento de objetos deben borrarse ahí
 // (no las vistas previas blob:, ni las fotos antiguas en Base64)
@@ -42,6 +43,8 @@ function isStoredImageUrl(url: string | null | undefined): boolean {
 }
 
 export default function RepairForm() {
+  const [webRequestId] = useState(webRequestIdFromUrl);
+  const [webRequestApplied, setWebRequestApplied] = useState(false);
   const [, navigate] = useLocation();
   // Buscamos coincidencias en ambas rutas posibles: /repairs/:id y /repairs/:id/edit
   const [matchNew, paramsNew] = useRoute("/repairs/:id");
@@ -174,6 +177,7 @@ export default function RepairForm() {
   // Mutación para crear/actualizar la reparación
   const mutation = useMutation({
     mutationFn: async (data: any) => {
+      if (!isEditMode && webRequestId && !webRequestApplied) throw new Error("Primero carga e incorpora la solicitud web");
       if (isEditMode) {
         // Update repair
         return apiRequest(`/api/repairs/${repairId}`, {
@@ -184,11 +188,14 @@ export default function RepairForm() {
         // Create new repair
         return apiRequest('/api/repairs', {
           method: 'POST',
-          body: JSON.stringify(data),
+          body: JSON.stringify({ ...data, ...(webRequestId ? { webRequestId } : {}) }),
         });
       }
     },
     onSuccess: async (data) => {
+      if (webRequestId && !isEditMode) {
+        await queryClient.invalidateQueries({ queryKey: ["/api/web-requests"] });
+      }
       // Borrar del almacenamiento las fotos quitadas/reemplazadas (solo tras guardar con éxito).
       // Nunca borrar una URL que la reparación guardada siga usando.
       const savedUrls = new Set([data?.image1, data?.image2, data?.image3].filter(Boolean));
@@ -567,6 +574,18 @@ export default function RepairForm() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {!isEditMode && webRequestId && <WebRequestSource id={webRequestId} type="reparacion" applied={webRequestApplied} onApply={payload => {
+        if (payload.tipo_solicitud !== "reparacion") return;
+        setSelectedClientId(null);
+        form.setValue("clientName", payload.nombre);
+        form.setValue("clientEmail", payload.correo);
+        form.setValue("equipment", payload.equipo);
+        form.setValue("model", payload.marca_modelo);
+        form.setValue("clientReport", payload.falla_reportada);
+        form.setValue("equipmentObservations", payload.mensaje);
+        form.setValue("paymentStatus", "Cotización");
+        setWebRequestApplied(true);
+      }} />}
       <div className="w-full max-w-6xl mx-auto space-y-4 sm:space-y-6 px-3 sm:px-4 md:px-6 py-4 sm:py-6">
       {/* Header con estilo corporativo Peza */}
       <div className="peza-header rounded-xl p-4 sm:p-6">

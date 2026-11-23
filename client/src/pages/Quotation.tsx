@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import QuotationForm from "@/components/QuotationForm";
+import WebRequestSource, { webRequestIdFromUrl } from "@/components/WebRequestSource";
 import QuotationItemsTable from "@/components/QuotationItemsTable";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,6 +17,8 @@ import type {
 } from "@shared/schema";
 
 export default function Quotation() {
+  const [webRequestId] = useState(webRequestIdFromUrl);
+  const [webRequestApplied, setWebRequestApplied] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
@@ -211,6 +214,7 @@ export default function Quotation() {
   // Save/Update quotation mutation
   const saveQuotationMutation = useMutation({
     mutationFn: async () => {
+      if (!isEditMode && webRequestId && !webRequestApplied) throw new Error("Primero carga e incorpora la solicitud web");
       if (!quotationNumber) throw new Error("No hay número de cotización");
       if (!clientInfo.clientName) throw new Error("El nombre del cliente es requerido");
       const salesperson = clientInfo.salesperson.trim();
@@ -224,6 +228,7 @@ export default function Quotation() {
       if (items.length === 0) throw new Error("Debe agregar al menos un concepto a la cotización");
 
       const quotationData = {
+        ...(!isEditMode && webRequestId ? { webRequestId } : {}),
         quotation: {
           quotationNumber,
           ...(linkedClientId && !isEditMode ? { clientId: linkedClientId } : {}),
@@ -262,6 +267,10 @@ export default function Quotation() {
       }
     },
     onSuccess: async (saved: Quotation) => {
+      if (webRequestId && !isEditMode) {
+        setWebRequestApplied(false);
+        await queryClient.invalidateQueries({ queryKey: ["/api/web-requests"] });
+      }
       // Verificar si viene de un cliente específico ANTES de invalidar cachés
       const urlParams = new URLSearchParams(window.location.search);
       const clientIdParam = urlParams.get('clientId');
@@ -410,6 +419,12 @@ export default function Quotation() {
 
   return (
     <div className="w-full max-w-7xl mx-auto">
+      {!isEditMode && webRequestId && <WebRequestSource id={webRequestId} type="cotizacion_renta" applied={webRequestApplied} onApply={payload => {
+        if (payload.tipo_solicitud !== "cotizacion_renta") return;
+        setLinkedClientId(null);
+        setClientInfo(current => ({ ...current, clientName: payload.nombre, clientEmail: payload.correo, projectName: "", rentalPeriod: `${payload.dias_renta} días; fecha solicitada: ${payload.fecha_requerida || "por confirmar"}` }));
+        setWebRequestApplied(true);
+      }} />}
       <Dialog open={savedQuotation !== null} onOpenChange={(open) => {
         if (!open && !isDownloadingSaved) setSavedQuotation(null);
       }}>

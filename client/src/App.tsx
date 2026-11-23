@@ -21,6 +21,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const AccountsReceivable = lazy(() => import("@/pages/AccountsReceivable"));
 const Repairs = lazy(() => import("@/pages/Repairs"));
 const RepairDashboard = lazy(() => import("@/pages/RepairDashboard"));
+const WebRequests = lazy(() => import("@/pages/WebRequests"));
 const RepairForm = lazy(() => import("@/pages/RepairForm"));
 const RepairDetail = lazy(() => import("@/pages/RepairDetail"));
 const RepairConcepts = lazy(() => import("@/pages/RepairConcepts"));
@@ -387,6 +388,9 @@ function Router() {
       <Route path="/login" component={() => <Redirect to="/dashboard" />} />
       
       <Route path="/" component={() => <Redirect to="/dashboard" />} />
+      <Route path="/web-requests" component={() => (
+        <Layout><WebRequests /></Layout>
+      )} />
       <Route path="/quotations/new" component={() => (
         <Layout>
           <Quotation />

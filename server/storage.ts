@@ -31,6 +31,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, like, ilike, or, sql, isNotNull, inArray } from "drizzle-orm";
 import { resolveLiquidatedAt } from "./repair-liquidation";
+import { lockWebRequest, finishWebRequest } from "./web-request-conversion";
 import { calculateRepairReviewTotals, resolveRepairReview } from "@shared/repair-review";
 
 export class MissingQuotationSalespersonError extends Error {
@@ -118,9 +119,10 @@ export const storage = {
   },
 
   // Create a new quotation with items
-  async createQuotation(quotationData: QuotationInsert, items: Omit<QuotationItemInsert, "quotationId">[]): Promise<Quotation> {
+  async createQuotation(quotationData: QuotationInsert, items: Omit<QuotationItemInsert, "quotationId">[], webRequestId?: number): Promise<Quotation> {
     // Begin transaction
     return db.transaction(async (tx) => {
+      await lockWebRequest(tx, webRequestId, "cotizacion_renta");
       // Insert quotation
       const [insertedQuotation] = await tx.insert(quotations)
         .values(quotationData)
@@ -136,6 +138,7 @@ export const storage = {
         );
       }
 
+      await finishWebRequest(tx, webRequestId, insertedQuotation.id, `COT-${insertedQuotation.quotationNumber}`);
       return insertedQuotation;
     });
   },
@@ -932,9 +935,11 @@ export const storage = {
   async createRepair(
     repairData: RepairInsert,
     items: Omit<RepairItemInsert, "repairId">[],
-    clientIdentity?: { name: string; email: string | null }
+    clientIdentity?: { name: string; email: string | null },
+    webRequestId?: number
   ): Promise<Repair> {
     const createdRepair = await db.transaction(async (tx) => {
+      await lockWebRequest(tx, webRequestId, "reparacion");
       try {
         let clientId = repairData.clientId;
         if (clientIdentity) {
@@ -999,6 +1004,7 @@ export const storage = {
           await tx.insert(repairItems).values(itemsWithRepairId);
         }
 
+        await finishWebRequest(tx, webRequestId, newRepair.id, newRepair.repairNumber);
         return newRepair;
       } catch (error) {
         console.error("Error al crear la reparación:", error);

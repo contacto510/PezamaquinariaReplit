@@ -151,6 +151,9 @@ export default function Navbar() {
               <i className="ri-tools-line mr-2"></i>
               Reparaciones
             </Link>
+            <Link href="/web-requests" className={`px-3 py-2 rounded-lg text-sm font-medium ${location === "/web-requests" ? "bg-yellow-400 text-black" : "text-gray-300 hover:bg-gray-700 hover:text-yellow-400"}`}>
+              Solicitudes web
+            </Link>
             <div className="border-l border-gray-600 mx-2 h-6"></div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400">{userEmail}</span>
@@ -311,6 +314,9 @@ export default function Navbar() {
           >
             <i className="ri-tools-line mr-3 text-xl"></i>
             Reparaciones
+          </Link>
+          <Link href="/web-requests" onClick={() => setMobileMenuOpen(false)} className={`flex items-center px-4 py-3 rounded-lg text-base font-bold ${location === "/web-requests" ? "bg-yellow-400 text-black" : "text-yellow-400 hover:bg-gray-900"}`}>
+            Solicitudes web
           </Link>
           <div className="border-t border-gray-700 my-4 pt-4">
             <p className="text-xs text-gray-400 px-4 mb-3 truncate">{userEmail}</p>
