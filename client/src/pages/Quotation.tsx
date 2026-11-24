@@ -419,7 +419,8 @@ export default function Quotation() {
 
   return (
     <div className="w-full max-w-7xl mx-auto">
-      {!isEditMode && webRequestId && <WebRequestSource id={webRequestId} type="cotizacion_renta" applied={webRequestApplied} onApply={payload => {
+      {!isEditMode && webRequestId && <WebRequestSource id={webRequestId} type="cotizacion_renta" applied={webRequestApplied}
+        onAddRentalConcept={item => setItems(current => [...current, item])} onApply={payload => {
         if (payload.tipo_solicitud !== "cotizacion_renta") return;
         setLinkedClientId(null);
         setClientInfo(current => ({ ...current, clientName: payload.nombre, clientEmail: payload.correo, projectName: "", rentalPeriod: `${payload.dias_renta} días; fecha solicitada: ${payload.fecha_requerida || "por confirmar"}` }));

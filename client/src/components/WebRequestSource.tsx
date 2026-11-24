@@ -3,6 +3,8 @@ import type { WebRequestPayload, WebRequestView } from "@shared/web-requests";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import type { QuotationItemData } from "@shared/schema";
+import WebRentalConceptPicker from "./WebRentalConceptPicker";
 
 export function webRequestIdFromUrl(): number | undefined {
   const value = new URLSearchParams(window.location.search).get("webRequestId");
@@ -10,8 +12,9 @@ export function webRequestIdFromUrl(): number | undefined {
   const id = Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
-export default function WebRequestSource({ id, type, applied, onApply }: {
+export default function WebRequestSource({ id, type, applied, onApply, onAddRentalConcept }: {
   id: number; type: string; applied: boolean; onApply: (payload: WebRequestPayload) => void;
+  onAddRentalConcept?: (item: QuotationItemData) => void;
 }) {
   const query = useQuery<WebRequestView>({
     queryKey: ["/api/web-requests", id],
@@ -36,6 +39,8 @@ export default function WebRequestSource({ id, type, applied, onApply }: {
       <Button type="button" disabled={applied} onClick={() => onApply(request.payload)}>
         {applied ? "Datos incorporados; revisa antes de guardar" : "Incorporar datos al formulario"}
       </Button>
+      {applied && request.payload.tipo_solicitud === "cotizacion_renta" && onAddRentalConcept &&
+        <WebRentalConceptPicker key={id} payload={request.payload} onAdd={onAddRentalConcept} />}
     </>}
     <Link className="block underline text-sm" href="/web-requests">Volver a Solicitudes web</Link>
   </section>;
